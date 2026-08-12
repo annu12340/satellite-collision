@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Format on Create",
+      "trigger": "PostFileCreate",
+      "description": "Runs ruff format on new Python files when they are created",
+      "matcher": "\\.py$",
+      "action": {
+        "type": "command",
+        "command": "cd /Users/annu/Desktop/satellite-collision && ruff format \"$KIRO_FILE_PATH\""
+      }
+    }
+  ]
+}

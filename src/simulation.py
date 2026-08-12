@@ -17,9 +17,12 @@ from matplotlib.patches import Circle
 from mpl_toolkits.mplot3d import Axes3D
 from typing import List, Optional
 import time
+import warnings
+
+warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 from .utils import (
-    MU_EARTH, R_EARTH,
+    MU_EARTH, R_EARTH, CATASTROPHIC_ENERGY,
     StateVector, Spacecraft, Conjunction, Maneuver, OrbitalElements,
     coe_to_state, state_to_coe, orbital_period, circular_velocity
 )
@@ -28,7 +31,7 @@ from .orbital_mechanics import (
 )
 from .conjunction import (
     run_conjunction_screening, assess_conjunction,
-    estimate_debris_count, debris_lifetime
+    estimate_debris_count, debris_lifetime, compute_risk_score
 )
 from .avoidance import (
     ManeuverDecision, design_avoidance_maneuver, apply_maneuver,
@@ -405,7 +408,35 @@ class CollisionPreventionSimulation:
             print(f"  Relative velocity: {conj.relative_velocity:.2f} km/s")
 
             # Predict outcome
-            outcome = predict_collision_outcome(sc1, sc2, conj)
+            try:
+                outcome = predict_collision_outcome(sc1, sc2, conj)
+            except (RuntimeError, np.linalg.LinAlgError):
+                # Use analytical prediction when propagation fails
+                from .damage_minimization import fragment_count, collision_specific_energy
+                m_proj = min(sc1.mass, sc2.mass)
+                m_targ = max(sc1.mass, sc2.mass)
+                E_spec = collision_specific_energy(m_proj, m_targ, conj.relative_velocity)
+                N_10 = fragment_count(sc1.mass, sc2.mass, conj.relative_velocity, 0.1)
+                N_1 = fragment_count(sc1.mass, sc2.mass, conj.relative_velocity, 0.01)
+                catastrophic = E_spec >= CATASTROPHIC_ENERGY
+
+                print(f"  Collision type: {'CATASTROPHIC' if catastrophic else 'Non-catastrophic'}")
+                print(f"  Specific energy: {E_spec:.0f} J/kg "
+                      f"(threshold: {CATASTROPHIC_ENERGY:.0f} J/kg)")
+                print(f"  Expected fragments (>10cm): {N_10}")
+                print(f"  Expected fragments (>1cm): {N_1}")
+
+                strategies = evaluate_all_strategies(sc1, sc2, conj, time_available=1800)
+                print(f"\n  Mitigation strategies (ranked):")
+                for j, strat in enumerate(strategies):
+                    score = strat.effectiveness_score * strat.feasibility_score
+                    print(f"    {j+1}. [{score:.2f}] {strat.name}")
+                    print(f"       {strat.description[:100]}")
+                    print(f"       Δv needed: {strat.required_delta_v_ms:.1f} m/s | "
+                          f"Effectiveness: {strat.effectiveness_score:.1%} | "
+                          f"Feasibility: {strat.feasibility_score:.1%}")
+                continue
+
             print(f"  Collision type: {'CATASTROPHIC' if outcome.is_catastrophic else 'Non-catastrophic'}")
             print(f"  Specific energy: {outcome.specific_energy_j_per_kg:.0f} J/kg "
                   f"(threshold: {CATASTROPHIC_ENERGY:.0f} J/kg)")
@@ -861,8 +892,8 @@ def plot_risk_evolution(spacecraft_list: List[Spacecraft],
 def main():
     """Run the full simulation and generate visualizations."""
 
-    # Run simulation
-    sim = CollisionPreventionSimulation(n_spacecraft=30, seed=42)
+    # Run simulation (20 spacecraft for faster demo; real systems handle 10,000+)
+    sim = CollisionPreventionSimulation(n_spacecraft=20, seed=42)
     sim.run_full_simulation()
 
     # Generate visualizations

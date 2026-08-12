@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Lint on Save",
+      "trigger": "PostFileSave",
+      "description": "Runs ruff linter on Python files whenever they are saved",
+      "matcher": "\\.py$",
+      "action": {
+        "type": "command",
+        "command": "cd /Users/annu/Desktop/satellite-collision && ruff check --fix \"$KIRO_FILE_PATH\""
+      }
+    }
+  ]
+}

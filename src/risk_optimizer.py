@@ -941,15 +941,15 @@ def project_risk_evolution(spacecraft_list: List[Spacecraft],
 
     states = []
 
-    current_N = N
+    current_N = float(N)
     current_fuel_fraction = 1.0  # Average fuel remaining fraction
-    accumulated_debris = 0
+    accumulated_debris = 0.0
 
     for step in range(time_steps):
         state = RiskState()
 
         # Collision probability scales as N²
-        scaling = (current_N / max(N, 1))**2
+        scaling = min((current_N / max(N, 1))**2, 1e6)  # Cap to avoid overflow
         state.total_collision_probability = (
             sum(c.probability_of_collision for c in conjunctions) * scaling
         )
@@ -975,9 +975,10 @@ def project_risk_evolution(spacecraft_list: List[Spacecraft],
         state.fuel_consumed_total_ms = (1 - current_fuel_fraction) * 25.0 * N
 
         # Population growth (new launches)
-        launch_rate = 0.1 * N  # 10% growth per year
-        current_N += int(launch_rate * dt_years)
-        current_N += int(accumulated_debris * 0.01)  # Debris adds to tracked objects
+        launch_rate = 0.05 * N  # 5% growth per year (realistic)
+        current_N += launch_rate * dt_years
+        current_N += accumulated_debris * 0.001  # Small fraction of debris becomes trackable
+        current_N = min(current_N, N * 50)  # Cap at 50x growth
 
         # Kessler index
         env = OrbitalEnvironment()
