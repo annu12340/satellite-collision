@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Auto Git Commit",
+      "trigger": "Stop",
+      "description": "Automatically creates a git commit with all changes when an agent session completes",
+      "action": {
+        "type": "command",
+        "command": "cd /Users/annu/Desktop/satellite-collision && git add -A && git diff --cached --quiet || git commit -m \"Auto-commit: changes from Kiro session\""
+      }
+    }
+  ]
+}
