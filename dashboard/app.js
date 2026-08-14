@@ -67,6 +67,7 @@ async function init() {
     populateDashboard();
     setupControls();
     setupInteraction();
+    initSimulationPanel();
 
     updateLoadStatus('Ready', 100);
     setTimeout(showDashboard, 600);
@@ -1154,6 +1155,580 @@ function updateClock() {
     const el = document.getElementById('utc-time');
     if (el) el.textContent = utc;
 }
+
+// ============================================================================
+// START
+// ============================================================================
+
+window.addEventListener('DOMContentLoaded', init);
+
+
+// ============================================================================
+// COLLISION SIMULATION PLAYER (SSE-powered)
+// ============================================================================
+
+const simPlayer = {
+    active: false,
+    eventSource: null,
+    scenario: null,
+    speed: 1.0,
+    paused: false,
+
+    // Three.js objects for the simulation
+    obj1Mesh: null,
+    obj2Mesh: null,
+    obj1Trail: null,
+    obj2Trail: null,
+    obj1CorrectedTrail: null,
+    burnEffect: null,
+    collisionExplosion: null,
+    debrisCloud: null,
+    distanceLine: null,
+    simGroup: null,
+
+    // State
+    currentFrame: 0,
+    totalFrames: 0,
+    obj1Positions: [],
+    obj2Positions: [],
+    trailPoints1: [],
+    trailPoints2: [],
+};
+
+function initSimulationPanel() {
+    // Fetch available scenarios and populate the selector
+    fetch('/api/scenarios')
+        .then(r => r.json())
+        .then(scenarios => {
+            const select = document.getElementById('scenario-select');
+            if (!select) return;
+            select.innerHTML = '';
+            scenarios.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name;
+                select.appendChild(opt);
+            });
+        })
+        .catch(err => console.warn('Could not load scenarios:', err));
+
+    // Button handlers
+    const playBtn = document.getElementById('sim-play-btn');
+    const stopBtn = document.getElementById('sim-stop-btn');
+    const speedSlider = document.getElementById('sim-speed');
+
+    if (playBtn) playBtn.addEventListener('click', startSimulation);
+    if (stopBtn) stopBtn.addEventListener('click', stopSimulation);
+    if (speedSlider) {
+        speedSlider.addEventListener('input', (e) => {
+            simPlayer.speed = parseFloat(e.target.value);
+            document.getElementById('sim-speed-val').textContent = simPlayer.speed.toFixed(1) + 'x';
+        });
+    }
+}
+
+function startSimulation() {
+    const scenarioId = document.getElementById('scenario-select')?.value;
+    if (!scenarioId) return;
+
+    // Stop any existing stream
+    stopSimulation();
+
+    // Show simulation panel as active
+    simPlayer.active = true;
+    document.getElementById('sim-status').textContent = 'CONNECTING...';
+    document.getElementById('sim-status').className = 'sim-status-badge connecting';
+    document.getElementById('sim-play-btn').disabled = true;
+    document.getElementById('sim-stop-btn').disabled = false;
+
+    // Clear previous sim objects
+    clearSimObjects();
+
+    // Create simulation 3D objects
+    createSimObjects();
+
+    // Clear event log
+    document.getElementById('sim-event-log').innerHTML = '';
+    document.getElementById('sim-progress-fill').style.width = '0%';
+
+    // Connect SSE
+    const url = `/api/scenario/${scenarioId}/stream?speed=${simPlayer.speed}`;
+    simPlayer.eventSource = new EventSource(url);
+
+    simPlayer.eventSource.addEventListener('scenario_info', (e) => {
+        const data = JSON.parse(e.data);
+        simPlayer.scenario = data;
+        simPlayer.totalFrames = data.n_frames;
+        simPlayer.currentFrame = 0;
+        simPlayer.trailPoints1 = [];
+        simPlayer.trailPoints2 = [];
+        document.getElementById('sim-status').textContent = 'LIVE';
+        document.getElementById('sim-status').className = 'sim-status-badge live';
+        document.getElementById('sim-scenario-name').textContent = data.name;
+
+        addEventLogEntry('info', `Scenario: ${data.name}`);
+        addEventLogEntry('info', `Alt: ${data.metadata.altitude_km} km | V_rel: ${data.metadata.relative_velocity_kms} km/s`);
+
+        // Move camera to watch the action
+        const camPos = new THREE.Vector3(0, 1.8, 2.5);
+        animateCamera(camPos, new THREE.Vector3(0, 0, 1.1));
+    });
+
+    simPlayer.eventSource.addEventListener('frame', (e) => {
+        const data = JSON.parse(e.data);
+        simPlayer.currentFrame = data.frame;
+        updateSimFrame(data);
+
+        // Update progress bar
+        const pct = (data.progress * 100).toFixed(1);
+        document.getElementById('sim-progress-fill').style.width = pct + '%';
+        document.getElementById('sim-distance').textContent = data.distance_km.toFixed(2) + ' km';
+    });
+
+    simPlayer.eventSource.addEventListener('sim_event', (e) => {
+        const data = JSON.parse(e.data);
+        handleSimEvent(data);
+    });
+
+    simPlayer.eventSource.addEventListener('debris_spawn', (e) => {
+        const data = JSON.parse(e.data);
+        spawnDebrisExplosion(data.fragments);
+    });
+
+    simPlayer.eventSource.addEventListener('stream_end', (e) => {
+        document.getElementById('sim-status').textContent = 'COMPLETE';
+        document.getElementById('sim-status').className = 'sim-status-badge complete';
+        document.getElementById('sim-play-btn').disabled = false;
+        simPlayer.active = false;
+        if (simPlayer.eventSource) {
+            simPlayer.eventSource.close();
+            simPlayer.eventSource = null;
+        }
+    });
+
+    simPlayer.eventSource.onerror = () => {
+        document.getElementById('sim-status').textContent = 'DISCONNECTED';
+        document.getElementById('sim-status').className = 'sim-status-badge error';
+        document.getElementById('sim-play-btn').disabled = false;
+        simPlayer.active = false;
+    };
+}
+
+function stopSimulation() {
+    if (simPlayer.eventSource) {
+        simPlayer.eventSource.close();
+        simPlayer.eventSource = null;
+    }
+    simPlayer.active = false;
+    document.getElementById('sim-status').textContent = 'IDLE';
+    document.getElementById('sim-status').className = 'sim-status-badge idle';
+    document.getElementById('sim-play-btn').disabled = false;
+    document.getElementById('sim-stop-btn').disabled = true;
+
+    // Fade out sim objects after a delay
+    setTimeout(clearSimObjects, 2000);
+}
+
+function createSimObjects() {
+    simPlayer.simGroup = new THREE.Group();
+    simPlayer.simGroup.name = 'simulation';
+
+    // Object 1 (maneuverable spacecraft) - bright cyan sphere
+    const geo1 = new THREE.SphereGeometry(0.025, 16, 16);
+    const mat1 = new THREE.MeshBasicMaterial({
+        color: 0x00d4ff,
+        transparent: true,
+        opacity: 1.0
+    });
+    simPlayer.obj1Mesh = new THREE.Mesh(geo1, mat1);
+    simPlayer.simGroup.add(simPlayer.obj1Mesh);
+
+    // Object 1 glow
+    const glow1Geo = new THREE.SphereGeometry(0.04, 12, 12);
+    const glow1Mat = new THREE.MeshBasicMaterial({
+        color: 0x00d4ff,
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending
+    });
+    const glow1 = new THREE.Mesh(glow1Geo, glow1Mat);
+    simPlayer.obj1Mesh.add(glow1);
+
+    // Object 2 (debris/target) - red-orange sphere
+    const geo2 = new THREE.SphereGeometry(0.02, 16, 16);
+    const mat2 = new THREE.MeshBasicMaterial({
+        color: 0xff4444,
+        transparent: true,
+        opacity: 1.0
+    });
+    simPlayer.obj2Mesh = new THREE.Mesh(geo2, mat2);
+    simPlayer.simGroup.add(simPlayer.obj2Mesh);
+
+    // Object 2 glow
+    const glow2Geo = new THREE.SphereGeometry(0.035, 12, 12);
+    const glow2Mat = new THREE.MeshBasicMaterial({
+        color: 0xff4444,
+        transparent: true,
+        opacity: 0.25,
+        blending: THREE.AdditiveBlending
+    });
+    const glow2 = new THREE.Mesh(glow2Geo, glow2Mat);
+    simPlayer.obj2Mesh.add(glow2);
+
+    // Distance line between objects
+    const lineGeo = new THREE.BufferGeometry();
+    const lineMat = new THREE.LineDashedMaterial({
+        color: 0xffcc00,
+        dashSize: 0.01,
+        gapSize: 0.008,
+        transparent: true,
+        opacity: 0.6
+    });
+    simPlayer.distanceLine = new THREE.Line(lineGeo, lineMat);
+    simPlayer.simGroup.add(simPlayer.distanceLine);
+
+    // Burn effect (particle burst) - initially invisible
+    const burnGeo = new THREE.ConeGeometry(0.01, 0.04, 8);
+    const burnMat = new THREE.MeshBasicMaterial({
+        color: 0xff8800,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending
+    });
+    simPlayer.burnEffect = new THREE.Mesh(burnGeo, burnMat);
+    simPlayer.simGroup.add(simPlayer.burnEffect);
+
+    scene.add(simPlayer.simGroup);
+}
+
+function clearSimObjects() {
+    if (simPlayer.simGroup) {
+        scene.remove(simPlayer.simGroup);
+        simPlayer.simGroup = null;
+    }
+    if (simPlayer.obj1Trail) {
+        scene.remove(simPlayer.obj1Trail);
+        simPlayer.obj1Trail = null;
+    }
+    if (simPlayer.obj2Trail) {
+        scene.remove(simPlayer.obj2Trail);
+        simPlayer.obj2Trail = null;
+    }
+    if (simPlayer.obj1CorrectedTrail) {
+        scene.remove(simPlayer.obj1CorrectedTrail);
+        simPlayer.obj1CorrectedTrail = null;
+    }
+    if (simPlayer.collisionExplosion) {
+        scene.remove(simPlayer.collisionExplosion);
+        simPlayer.collisionExplosion = null;
+    }
+    if (simPlayer.debrisCloud) {
+        scene.remove(simPlayer.debrisCloud);
+        simPlayer.debrisCloud = null;
+    }
+    simPlayer.trailPoints1 = [];
+    simPlayer.trailPoints2 = [];
+}
+
+function updateSimFrame(data) {
+    if (!simPlayer.simGroup) return;
+
+    const pos1 = new THREE.Vector3(
+        data.object1_pos[0] * SCALE,
+        data.object1_pos[2] * SCALE,
+        data.object1_pos[1] * SCALE
+    );
+    const pos2 = new THREE.Vector3(
+        data.object2_pos[0] * SCALE,
+        data.object2_pos[2] * SCALE,
+        data.object2_pos[1] * SCALE
+    );
+
+    // Update spacecraft positions
+    simPlayer.obj1Mesh.position.copy(pos1);
+    simPlayer.obj2Mesh.position.copy(pos2);
+
+    // Update distance line
+    const linePositions = new Float32Array([
+        pos1.x, pos1.y, pos1.z,
+        pos2.x, pos2.y, pos2.z
+    ]);
+    simPlayer.distanceLine.geometry.dispose();
+    simPlayer.distanceLine.geometry = new THREE.BufferGeometry();
+    simPlayer.distanceLine.geometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+    simPlayer.distanceLine.computeLineDistances();
+
+    // Color distance line by proximity (green -> yellow -> red)
+    const dist = data.distance_km;
+    let lineColor;
+    if (dist > 5) lineColor = 0x30d158;
+    else if (dist > 2) lineColor = 0xffcc00;
+    else if (dist > 0.5) lineColor = 0xff9500;
+    else lineColor = 0xff2d55;
+    simPlayer.distanceLine.material.color.setHex(lineColor);
+
+    // Update trails (breadcrumb path)
+    simPlayer.trailPoints1.push(pos1.clone());
+    simPlayer.trailPoints2.push(pos2.clone());
+
+    // Redraw trail 1
+    if (simPlayer.trailPoints1.length > 2) {
+        if (simPlayer.obj1Trail) scene.remove(simPlayer.obj1Trail);
+        const trailGeo = new THREE.BufferGeometry().setFromPoints(simPlayer.trailPoints1);
+        const trailColor = data.is_corrected ? 0x06ffd0 : 0x00d4ff;
+        const trailMat = new THREE.LineBasicMaterial({
+            color: trailColor,
+            transparent: true,
+            opacity: 0.5
+        });
+        simPlayer.obj1Trail = new THREE.Line(trailGeo, trailMat);
+        scene.add(simPlayer.obj1Trail);
+    }
+
+    // Redraw trail 2
+    if (simPlayer.trailPoints2.length > 2) {
+        if (simPlayer.obj2Trail) scene.remove(simPlayer.obj2Trail);
+        const trailGeo = new THREE.BufferGeometry().setFromPoints(simPlayer.trailPoints2);
+        const trailMat = new THREE.LineBasicMaterial({
+            color: 0xff4444,
+            transparent: true,
+            opacity: 0.4
+        });
+        simPlayer.obj2Trail = new THREE.Line(trailGeo, trailMat);
+        scene.add(simPlayer.obj2Trail);
+    }
+
+    // Animate burn effect
+    if (simPlayer.burnEffect) {
+        simPlayer.burnEffect.position.copy(pos1);
+        // Orient burn cone away from velocity direction
+        if (simPlayer.trailPoints1.length > 3) {
+            const prev = simPlayer.trailPoints1[simPlayer.trailPoints1.length - 3];
+            const dir = pos1.clone().sub(prev).normalize();
+            simPlayer.burnEffect.lookAt(pos1.clone().sub(dir));
+        }
+    }
+}
+
+function handleSimEvent(evt) {
+    const type = evt.type;
+    const message = evt.message;
+
+    // Visual effects based on event type
+    switch (type) {
+        case 'detection':
+            addEventLogEntry('warning', message);
+            break;
+
+        case 'risk_assessment':
+            addEventLogEntry('critical', message);
+            // Pulse the danger indicator
+            flashDangerIndicator();
+            break;
+
+        case 'maneuver_planning':
+            addEventLogEntry('info', message);
+            break;
+
+        case 'maneuver_execute':
+            addEventLogEntry('burn', message);
+            activateBurnEffect();
+            break;
+
+        case 'maneuver_complete':
+            addEventLogEntry('success', message);
+            deactivateBurnEffect();
+            break;
+
+        case 'no_maneuver':
+            addEventLogEntry('critical', message);
+            break;
+
+        case 'impact_imminent':
+            addEventLogEntry('critical', message);
+            flashDangerIndicator();
+            break;
+
+        case 'collision':
+            addEventLogEntry('explosion', message);
+            triggerCollisionFlash();
+            break;
+
+        case 'closest_approach':
+            addEventLogEntry('success', message);
+            break;
+
+        case 'scenario_end':
+            addEventLogEntry('info', message);
+            break;
+
+        default:
+            addEventLogEntry('info', message);
+    }
+}
+
+function addEventLogEntry(type, message) {
+    const log = document.getElementById('sim-event-log');
+    if (!log) return;
+
+    const entry = document.createElement('div');
+    entry.className = `event-entry event-${type}`;
+
+    const timestamp = (simPlayer.currentFrame * 0.05 / simPlayer.speed).toFixed(1);
+    entry.innerHTML = `
+        <span class="event-time">T+${timestamp}s</span>
+        <span class="event-icon">${getEventIcon(type)}</span>
+        <span class="event-msg">${message}</span>
+    `;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+}
+
+function getEventIcon(type) {
+    switch (type) {
+        case 'critical': return '&#9888;';
+        case 'warning': return '&#9679;';
+        case 'burn': return '&#128293;';
+        case 'success': return '&#9989;';
+        case 'explosion': return '&#128165;';
+        case 'info': return '&#8226;';
+        default: return '&#8226;';
+    }
+}
+
+function activateBurnEffect() {
+    if (!simPlayer.burnEffect) return;
+    simPlayer.burnEffect.material.opacity = 0.9;
+    simPlayer.burnEffect.scale.set(1.5, 2, 1.5);
+
+    // Change object 1 glow to orange during burn
+    if (simPlayer.obj1Mesh && simPlayer.obj1Mesh.children[0]) {
+        simPlayer.obj1Mesh.children[0].material.color.setHex(0xff8800);
+        simPlayer.obj1Mesh.children[0].material.opacity = 0.6;
+    }
+}
+
+function deactivateBurnEffect() {
+    if (!simPlayer.burnEffect) return;
+    // Fade out burn over time
+    let opacity = 0.9;
+    const fadeInterval = setInterval(() => {
+        opacity -= 0.05;
+        if (opacity <= 0) {
+            simPlayer.burnEffect.material.opacity = 0;
+            simPlayer.burnEffect.scale.set(1, 1, 1);
+            clearInterval(fadeInterval);
+            // Restore glow color
+            if (simPlayer.obj1Mesh && simPlayer.obj1Mesh.children[0]) {
+                simPlayer.obj1Mesh.children[0].material.color.setHex(0x06ffd0);
+                simPlayer.obj1Mesh.children[0].material.opacity = 0.4;
+            }
+        } else {
+            simPlayer.burnEffect.material.opacity = opacity;
+        }
+    }, 50);
+}
+
+function triggerCollisionFlash() {
+    if (!simPlayer.obj1Mesh) return;
+
+    // Big flash at collision point
+    const pos = simPlayer.obj1Mesh.position.clone();
+    const flashGeo = new THREE.SphereGeometry(0.08, 16, 16);
+    const flashMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1.0,
+        blending: THREE.AdditiveBlending
+    });
+    const flash = new THREE.Mesh(flashGeo, flashMat);
+    flash.position.copy(pos);
+    scene.add(flash);
+
+    // Expand and fade
+    let scale = 1;
+    const expandInterval = setInterval(() => {
+        scale += 0.3;
+        flash.scale.set(scale, scale, scale);
+        flash.material.opacity -= 0.04;
+        if (flash.material.opacity <= 0) {
+            scene.remove(flash);
+            clearInterval(expandInterval);
+        }
+    }, 30);
+
+    // Hide the spacecraft (they've been destroyed)
+    simPlayer.obj1Mesh.visible = false;
+    simPlayer.obj2Mesh.visible = false;
+    simPlayer.distanceLine.visible = false;
+}
+
+function spawnDebrisExplosion(fragments) {
+    if (!fragments || fragments.length === 0) return;
+
+    const count = fragments.length;
+    const positions = new Float32Array(count * 3);
+    const velocities = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+        positions[i * 3] = fragments[i][0] * SCALE;
+        positions[i * 3 + 1] = fragments[i][2] * SCALE;
+        positions[i * 3 + 2] = fragments[i][1] * SCALE;
+
+        // Random velocities for expansion
+        velocities[i * 3] = (Math.random() - 0.5) * 0.002;
+        velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.002;
+        velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.002;
+
+        // Orange-red colors
+        colors[i * 3] = 0.8 + Math.random() * 0.2;
+        colors[i * 3 + 1] = 0.2 + Math.random() * 0.4;
+        colors[i * 3 + 2] = 0.0 + Math.random() * 0.1;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.userData = { velocities: velocities };
+
+    const mat = new THREE.PointsMaterial({
+        size: 0.012,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true
+    });
+
+    simPlayer.debrisCloud = new THREE.Points(geo, mat);
+    scene.add(simPlayer.debrisCloud);
+
+    // Animate debris expansion
+    let debrisFrame = 0;
+    const debrisInterval = setInterval(() => {
+        if (!simPlayer.debrisCloud) { clearInterval(debrisInterval); return; }
+        const pos = simPlayer.debrisCloud.geometry.attributes.position.array;
+        const vel = simPlayer.debrisCloud.geometry.userData.velocities;
+        for (let i = 0; i < pos.length; i++) {
+            pos[i] += vel[i];
+        }
+        simPlayer.debrisCloud.geometry.attributes.position.needsUpdate = true;
+        simPlayer.debrisCloud.material.opacity -= 0.003;
+        debrisFrame++;
+        if (debrisFrame > 200 || simPlayer.debrisCloud.material.opacity <= 0) {
+            clearInterval(debrisInterval);
+        }
+    }, 30);
+}
+
+function flashDangerIndicator() {
+    const status = document.getElementById('sim-status');
+    if (!status) return;
+    status.classList.add('flash-danger');
+    setTimeout(() => status.classList.remove('flash-danger'), 1000);
+}
+
 
 // ============================================================================
 // START

@@ -3,271 +3,1427 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orbital Sentinel - Satellite Collision Prevention</title>
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>AI Satellite Collision Prevention System</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2235;
+            --bg-card-hover: #1e2a42;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #8b5cf6;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e293b;
+            --glow-blue: rgba(59, 130, 246, 0.15);
+            --glow-cyan: rgba(6, 182, 212, 0.15);
+            --glow-purple: rgba(139, 92, 246, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 80%, rgba(6, 182, 212, 0.03) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .bg-grid::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 3rem 0 4rem;
+            position: relative;
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.5px;
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .header .badge-row {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.9rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+
+        .badge-blue { border-color: rgba(59,130,246,0.3); color: var(--accent-blue); }
+        .badge-cyan { border-color: rgba(6,182,212,0.3); color: var(--accent-cyan); }
+        .badge-purple { border-color: rgba(139,92,246,0.3); color: var(--accent-purple); }
+        .badge-green { border-color: rgba(16,185,129,0.3); color: var(--accent-green); }
+        .badge-orange { border-color: rgba(245,158,11,0.3); color: var(--accent-orange); }
+
+        /* Navigation */
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 2rem 0 3rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover, .nav-btn.active {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+            background: var(--glow-blue);
+        }
+
+        /* Sections */
+        .section {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .section-title .icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .section-desc {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+            max-width: 800px;
+        }
+
+        /* Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover {
+            border-color: rgba(59, 130, 246, 0.3);
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        .card-icon.blue { background: var(--glow-blue); color: var(--accent-blue); }
+        .card-icon.cyan { background: var(--glow-cyan); color: var(--accent-cyan); }
+        .card-icon.purple { background: var(--glow-purple); color: var(--accent-purple); }
+        .card-icon.green { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+        .card-icon.orange { background: rgba(245,158,11,0.15); color: var(--accent-orange); }
+        .card-icon.red { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .card-body {
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+        }
+
+        .card-body p {
+            margin-bottom: 0.75rem;
+        }
+
+        /* Math blocks */
+        .math-block {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 0.75rem 0;
+            overflow-x: auto;
+            text-align: center;
+        }
+
+        .math-inline {
+            color: var(--accent-cyan);
+        }
+
+        .math-label {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.4rem;
+            text-align: left;
+        }
+
+        /* Formula showcase */
+        .formula-showcase {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .formula-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .formula-item:hover {
+            border-color: rgba(6, 182, 212, 0.4);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.1);
+        }
+
+        .formula-item .label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .formula-item .formula {
+            margin: 0.75rem 0;
+            font-size: 1.1rem;
+        }
+
+        .formula-item .desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Pipeline visualization */
+        .pipeline {
+            display: flex;
+            align-items: stretch;
+            gap: 0;
+            margin: 2rem 0;
+            overflow-x: auto;
+            padding-bottom: 1rem;
+        }
+
+        .pipeline-step {
+            flex: 1;
+            min-width: 180px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem 1rem;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .pipeline-step:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent-blue);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+        }
+
+        .pipeline-step::after {
+            content: '→';
+            position: absolute;
+            right: -14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            z-index: 2;
+        }
+
+        .pipeline-step:last-child::after {
+            content: '';
+        }
+
+        .pipeline-step .step-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--glow-blue);
+            color: var(--accent-blue);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .pipeline-step .step-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+        }
+
+        .pipeline-step .step-desc {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        /* Stats row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.25rem;
+        }
+
+        /* Table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .data-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .data-table tr:hover td {
+            background: rgba(59, 130, 246, 0.03);
+        }
+
+        /* Code block */
+        .code-block {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        .code-block .keyword { color: var(--accent-purple); }
+        .code-block .function { color: var(--accent-blue); }
+        .code-block .number { color: var(--accent-orange); }
+        .code-block .comment { color: var(--text-muted); font-style: italic; }
+        .code-block .string { color: var(--accent-green); }
+
+        /* Full-width card */
+        .card-full {
+            grid-column: 1 / -1;
+        }
+
+        /* Decision tree */
+        .decision-tree {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .decision-node {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .decision-node:last-child {
+            border-bottom: none;
+        }
+
+        .decision-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .decision-dot.red { background: var(--accent-red); }
+        .decision-dot.orange { background: var(--accent-orange); }
+        .decision-dot.yellow { background: #eab308; }
+        .decision-dot.green { background: var(--accent-green); }
+
+        .decision-condition {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            min-width: 120px;
+        }
+
+        .decision-action {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .header h1 { font-size: 1.8rem; }
+            .card-grid { grid-template-columns: 1fr; }
+            .formula-showcase { grid-template-columns: 1fr; }
+            .pipeline { flex-direction: column; }
+            .pipeline-step::after { content: '↓'; right: auto; bottom: -14px; top: auto; left: 50%; transform: translateX(-50%); }
+        }
+    </style>
 </head>
 <body>
-    <!-- Loading Screen -->
-    <div id="loading-screen">
-        <div class="loader-content">
-            <div class="orbit-loader">
-                <div class="orbit-ring ring-1"></div>
-                <div class="orbit-ring ring-2"></div>
-                <div class="orbit-ring ring-3"></div>
-                <div class="orbit-core"></div>
-            </div>
-            <h1>ORBITAL SENTINEL</h1>
-            <p class="loader-subtitle">AI Collision Prevention System</p>
-            <div class="loader-bar">
-                <div class="loader-progress" id="load-progress"></div>
-            </div>
-            <p class="loader-status" id="load-status">Initializing simulation...</p>
-        </div>
-    </div>
+    <div class="bg-grid"></div>
+    <div class="container">
 
-    <!-- Main Dashboard -->
-    <div id="dashboard" class="hidden">
         <!-- Header -->
-        <header class="dash-header">
-            <div class="header-left">
-                <div class="logo">
-                    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                        <circle cx="14" cy="14" r="12" stroke="url(#grad1)" stroke-width="1.5" fill="none"/>
-                        <circle cx="14" cy="14" r="6" stroke="url(#grad1)" stroke-width="1" fill="none" opacity="0.6"/>
-                        <ellipse cx="14" cy="14" rx="12" ry="5" stroke="url(#grad1)" stroke-width="1" fill="none" opacity="0.4" transform="rotate(30 14 14)"/>
-                        <ellipse cx="14" cy="14" rx="12" ry="5" stroke="url(#grad1)" stroke-width="1" fill="none" opacity="0.4" transform="rotate(-30 14 14)"/>
-                        <circle cx="14" cy="14" r="2" fill="url(#grad1)"/>
-                        <defs>
-                            <linearGradient id="grad1" x1="0" y1="0" x2="28" y2="28">
-                                <stop offset="0%" stop-color="#00d4ff"/>
-                                <stop offset="100%" stop-color="#7b2ff7"/>
-                            </linearGradient>
-                        </defs>
-                    </svg>
-                </div>
-                <div class="header-title">
-                    <h1>ORBITAL SENTINEL</h1>
-                    <span class="header-badge">LIVE</span>
-                </div>
-            </div>
-            <div class="header-center">
-                <div class="header-stat">
-                    <span class="stat-label">OBJECTS TRACKED</span>
-                    <span class="stat-value" id="h-objects">--</span>
-                </div>
-                <div class="header-stat">
-                    <span class="stat-label">ACTIVE CONJUNCTIONS</span>
-                    <span class="stat-value warning" id="h-conjunctions">--</span>
-                </div>
-                <div class="header-stat">
-                    <span class="stat-label">THREAT LEVEL</span>
-                    <span class="stat-value" id="h-threat">--</span>
-                </div>
-                <div class="header-stat">
-                    <span class="stat-label">SYSTEM STATUS</span>
-                    <span class="stat-value success" id="h-status">NOMINAL</span>
-                </div>
-            </div>
-            <div class="header-right">
-                <div class="time-display">
-                    <span id="utc-time"></span>
-                    <span class="time-label">UTC</span>
-                </div>
+        <header class="header">
+            <h1>AI Satellite Collision Prevention System</h1>
+            <p class="subtitle">
+                Physics-based simulation and optimization for preventing orbital collisions
+                among thousands of spacecraft — and minimizing damage when collisions are unavoidable.
+            </p>
+            <div class="badge-row">
+                <span class="badge badge-blue">&#9679; Orbital Mechanics</span>
+                <span class="badge badge-cyan">&#9679; Conjunction Assessment</span>
+                <span class="badge badge-purple">&#9679; Monte Carlo Tree Search</span>
+                <span class="badge badge-green">&#9679; NASA Breakup Model</span>
+                <span class="badge badge-orange">&#9679; Kessler Syndrome</span>
             </div>
         </header>
 
-        <!-- Main Content -->
-        <div class="dash-content">
-            <!-- Left Panel -->
-            <aside class="panel panel-left">
-                <!-- Risk Metrics -->
-                <div class="panel-section">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#9888;</span>
-                        Risk Assessment
-                    </h3>
-                    <div class="metrics-grid">
-                        <div class="metric-card critical">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-critical">--</span>
-                                <span class="metric-label">Critical</span>
-                            </div>
+        <!-- Navigation -->
+        <nav class="nav">
+            <button class="nav-btn active" onclick="showSection('overview')">Overview</button>
+            <button class="nav-btn" onclick="showSection('orbital')">Orbital Mechanics</button>
+            <button class="nav-btn" onclick="showSection('conjunction')">Conjunction Assessment</button>
+            <button class="nav-btn" onclick="showSection('avoidance')">Avoidance Planning</button>
+            <button class="nav-btn" onclick="showSection('damage')">Damage Minimization</button>
+            <button class="nav-btn" onclick="showSection('optimizer')">AI Optimizer</button>
+            <button class="nav-btn" onclick="showSection('constants')">Constants & Data</button>
+        </nav>
+
+        <!-- ============================================================ -->
+        <!-- OVERVIEW SECTION -->
+        <!-- ============================================================ -->
+        <section id="overview" class="section active">
+            <h2 class="section-title">
+                <span class="icon" style="background:var(--glow-blue)">&#128752;</span>
+                System Architecture
+            </h2>
+            <p class="section-desc">
+                A multi-layered system that propagates orbits, detects potential collisions,
+                plans optimal avoidance maneuvers, and minimizes damage when collisions are unavoidable.
+            </p>
+
+            <!-- Pipeline -->
+            <div class="pipeline">
+                <div class="pipeline-step">
+                    <div class="step-num">1</div>
+                    <div class="step-title">Propagate</div>
+                    <div class="step-desc">Integrate equations of motion with J2, drag, SRP perturbations</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-num">2</div>
+                    <div class="step-title">Screen</div>
+                    <div class="step-desc">Filter N² pairs using geometric constraints</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-num">3</div>
+                    <div class="step-title">Assess</div>
+                    <div class="step-desc">Compute Pc via covariance projection to encounter plane</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-num">4</div>
+                    <div class="step-title">Decide</div>
+                    <div class="step-desc">Risk-weighted decision: maneuver, monitor, or accept</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-num">5</div>
+                    <div class="step-title">Plan</div>
+                    <div class="step-desc">STM-optimal Δv direction and timing</div>
+                </div>
+                <div class="pipeline-step">
+                    <div class="step-num">6</div>
+                    <div class="step-title">Mitigate</div>
+                    <div class="step-desc">If unavoidable: minimize debris via geometry/altitude</div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-value">6</div>
+                    <div class="stat-label">Core Modules</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">47</div>
+                    <div class="stat-label">Physics Functions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">23</div>
+                    <div class="stat-label">Key Equations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">3</div>
+                    <div class="stat-label">AI Strategies</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">5</div>
+                    <div class="stat-label">Mitigation Options</div>
+                </div>
+            </div>
+
+            <!-- Core Problem -->
+            <div class="card" style="margin-top:2rem">
+                <div class="card-header">
+                    <div class="card-icon purple">&#127919;</div>
+                    <div class="card-title">The Core Optimization Problem</div>
+                </div>
+                <div class="card-body">
+                    <p>Given N spacecraft with uncertain trajectories and limited fuel, minimize long-term orbital risk:</p>
+                    <div class="math-block">
+                        $$J = \sum_j w_j \cdot P_{c,j}(\Delta\mathbf{v}_1 \ldots \Delta\mathbf{v}_N) + \lambda \sum_i \frac{|\Delta\mathbf{v}_i|}{\Delta v_{\text{budget},i}} + \gamma \cdot \text{Debris\_risk}$$
+                    </div>
+                    <p>Where the weights balance collision probability reduction, fuel conservation, and long-term cascade risk (Kessler syndrome).</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- ORBITAL MECHANICS SECTION -->
+        <!-- ============================================================ -->
+        <section id="orbital" class="section">
+            <h2 class="section-title">
+                <span class="icon" style="background:var(--glow-cyan)">&#127760;</span>
+                Orbital Mechanics
+            </h2>
+            <p class="section-desc">
+                The two-body problem, perturbation forces, numerical integration, and
+                State Transition Matrix propagation for uncertainty evolution.
+            </p>
+
+            <!-- Key Formulas -->
+            <div class="formula-showcase">
+                <div class="formula-item">
+                    <div class="label">Two-Body Equation of Motion</div>
+                    <div class="formula">$$\ddot{\mathbf{r}} = -\frac{\mu}{|\mathbf{r}|^3}\mathbf{r}$$</div>
+                    <div class="desc">Produces Keplerian conic section orbits</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Orbital Period</div>
+                    <div class="formula">$$T = 2\pi\sqrt{\frac{a^3}{\mu}}$$</div>
+                    <div class="desc">~92 min for LEO at 400 km altitude</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Circular Velocity</div>
+                    <div class="formula">$$v_c = \sqrt{\frac{\mu}{r}}$$</div>
+                    <div class="desc">~7.67 km/s at 400 km altitude</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Kepler's Equation</div>
+                    <div class="formula">$$M = E - e\sin E$$</div>
+                    <div class="desc">Solved iteratively via Newton-Raphson</div>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <!-- Perturbations -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue">&#127758;</div>
+                        <div class="card-title">J2 Oblateness Perturbation</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Earth's equatorial bulge creates the dominant LEO perturbation:</p>
+                        <div class="math-block">
+                            <span class="math-label">Acceleration components</span>
+                            $$a_x = -\frac{3}{2}\frac{J_2 \mu R_E^2}{r^5} x\left(1 - 5\frac{z^2}{r^2}\right)$$
+                            $$a_z = -\frac{3}{2}\frac{J_2 \mu R_E^2}{r^5} z\left(3 - 5\frac{z^2}{r^2}\right)$$
                         </div>
-                        <div class="metric-card high">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-high">--</span>
-                                <span class="metric-label">High Risk</span>
-                            </div>
+                        <p>Causes orbital plane precession at ~7°/day for typical LEO orbits. <code>J₂ = 1.08263 × 10⁻³</code></p>
+                    </div>
+                </div>
+
+                <!-- Drag -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon cyan">&#127744;</div>
+                        <div class="card-title">Atmospheric Drag</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Dominates below 1000 km. Exponential density model with scale heights:</p>
+                        <div class="math-block">
+                            <span class="math-label">Drag acceleration</span>
+                            $$\mathbf{a}_{\text{drag}} = -\frac{1}{2}\rho C_d \frac{A}{m}|\mathbf{v}_{\text{rel}}|\mathbf{v}_{\text{rel}}$$
                         </div>
-                        <div class="metric-card medium">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-maneuvers">--</span>
-                                <span class="metric-label">Maneuvers</span>
-                            </div>
-                        </div>
-                        <div class="metric-card info">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-fuel">--</span>
-                                <span class="metric-label">Fuel Used (m/s)</span>
-                            </div>
+                        <p>Key parameter: area-to-mass ratio (A/m). High A/m objects (solar panels, debris) decay faster.</p>
+                        <div class="math-block">
+                            <span class="math-label">Density model</span>
+                            $$\rho(h) = \rho_0 \exp\left(-\frac{h - h_0}{H}\right)$$
                         </div>
                     </div>
                 </div>
 
-                <!-- Conjunction Table -->
-                <div class="panel-section flex-grow">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128752;</span>
-                        Active Conjunctions
-                    </h3>
-                    <div class="conjunction-list" id="conjunction-list">
-                        <!-- Populated by JS -->
+                <!-- STM -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon purple">&#128200;</div>
+                        <div class="card-title">State Transition Matrix (STM)</div>
                     </div>
-                </div>
-
-                <!-- Kessler Index -->
-                <div class="panel-section">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#127776;</span>
-                        Kessler Syndrome Index
-                    </h3>
-                    <div class="kessler-gauge">
-                        <div class="gauge-track">
-                            <div class="gauge-fill" id="kessler-fill"></div>
+                    <div class="card-body">
+                        <p>Linearized sensitivity of state to initial conditions. Critical for covariance and maneuver planning:</p>
+                        <div class="math-block">
+                            <span class="math-label">STM evolution</span>
+                            $$\dot{\Phi} = F \cdot \Phi, \quad \Phi(t_0, t_0) = I_{6\times6}$$
                         </div>
-                        <div class="gauge-labels">
-                            <span>STABLE</span>
-                            <span>CRITICAL</span>
-                            <span>RUNAWAY</span>
+                        <div class="math-block">
+                            <span class="math-label">Jacobian structure</span>
+                            $$F = \begin{bmatrix} \mathbf{0}_{3\times3} & \mathbf{I}_{3\times3} \\ \frac{\partial \mathbf{a}}{\partial \mathbf{r}} & \mathbf{0}_{3\times3} \end{bmatrix}$$
                         </div>
-                        <div class="gauge-value" id="kessler-value">0.00</div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- 3D Viewport -->
-            <main class="viewport-container">
-                <div id="three-viewport"></div>
-
-                <!-- Viewport Controls Overlay -->
-                <div class="viewport-controls">
-                    <div class="control-group">
-                        <button class="vp-btn active" id="btn-orbits" title="Toggle Orbits">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="7" ry="4" stroke="currentColor" fill="none" stroke-width="1.5"/></svg>
-                        </button>
-                        <button class="vp-btn active" id="btn-spacecraft" title="Toggle Spacecraft">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,14 1,14" stroke="currentColor" fill="none" stroke-width="1.5"/></svg>
-                        </button>
-                        <button class="vp-btn active" id="btn-conjunctions" title="Toggle Conjunctions">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><line x1="2" y1="14" x2="14" y2="2" stroke="currentColor" stroke-width="1.5"/><circle cx="2" cy="14" r="2" fill="currentColor"/><circle cx="14" cy="2" r="2" fill="currentColor"/></svg>
-                        </button>
-                        <button class="vp-btn" id="btn-debris" title="Toggle Debris">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="4" cy="4" r="1.5" fill="currentColor"/><circle cx="12" cy="6" r="1" fill="currentColor"/><circle cx="7" cy="11" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1" fill="currentColor"/><circle cx="3" cy="9" r="0.8" fill="currentColor"/></svg>
-                        </button>
-                        <button class="vp-btn" id="btn-shells" title="Toggle Altitude Shells">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3" stroke="currentColor" fill="none" stroke-width="1"/><circle cx="8" cy="8" r="5" stroke="currentColor" fill="none" stroke-width="1" opacity="0.6"/><circle cx="8" cy="8" r="7" stroke="currentColor" fill="none" stroke-width="1" opacity="0.3"/></svg>
-                        </button>
-                    </div>
-                    <div class="control-group">
-                        <button class="vp-btn" id="btn-autorotate" title="Auto Rotate">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2 A6 6 0 1 1 2 8" stroke="currentColor" fill="none" stroke-width="1.5"/><polygon points="2,5 2,11 5,8" fill="currentColor"/></svg>
-                        </button>
-                        <button class="vp-btn" id="btn-reset" title="Reset Camera">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 2v3M8 11v3M2 8h3M11 8h3" stroke="currentColor" stroke-width="1.5"/></svg>
-                        </button>
+                        <p>The STM partitions into position-position (Φ_rr), position-velocity (Φ_rv), etc.</p>
                     </div>
                 </div>
 
-                <!-- Info Tooltip -->
-                <div class="info-tooltip hidden" id="info-tooltip">
-                    <div class="tooltip-header" id="tooltip-header"></div>
-                    <div class="tooltip-body" id="tooltip-body"></div>
-                </div>
-
-                <!-- Altitude Legend -->
-                <div class="altitude-legend">
-                    <div class="legend-title">Altitude (km)</div>
-                    <div class="legend-gradient"></div>
-                    <div class="legend-labels">
-                        <span>400</span>
-                        <span>650</span>
-                        <span>900</span>
+                <!-- Covariance -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange">&#128202;</div>
+                        <div class="card-title">Covariance Propagation</div>
                     </div>
-                </div>
-            </main>
-
-            <!-- Right Panel -->
-            <aside class="panel panel-right">
-                <!-- Constellation Overview -->
-                <div class="panel-section">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128752;</span>
-                        Constellation
-                    </h3>
-                    <div class="constellation-stats">
-                        <div class="const-stat">
-                            <span class="const-icon comsat"></span>
-                            <span class="const-label">COMSAT</span>
-                            <span class="const-value" id="c-comsat">--</span>
+                    <div class="card-body">
+                        <p>Uncertainty grows over time. The 6×6 covariance matrix evolves as:</p>
+                        <div class="math-block">
+                            <span class="math-label">Covariance evolution</span>
+                            $$P(t) = \Phi(t, t_0) \cdot P(t_0) \cdot \Phi(t, t_0)^T + Q$$
                         </div>
-                        <div class="const-stat">
-                            <span class="const-icon eos"></span>
-                            <span class="const-label">Earth Obs</span>
-                            <span class="const-value" id="c-eos">--</span>
+                        <p>Q is process noise modeling unmodeled forces. Position uncertainty typically grows from ~100m to ~1km over 24 hours.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coordinate frames -->
+            <div class="card" style="margin-top:1.5rem">
+                <div class="card-header">
+                    <div class="card-icon green">&#128205;</div>
+                    <div class="card-title">Coordinate Frames & Transforms</div>
+                </div>
+                <div class="card-body">
+                    <div class="math-block">
+                        <span class="math-label">Perifocal to ECI rotation</span>
+                        $$R = R_3(-\Omega) \cdot R_1(-i) \cdot R_3(-\omega)$$
+                    </div>
+                    <table class="data-table">
+                        <tr><th>Frame</th><th>Use Case</th><th>Axes</th></tr>
+                        <tr><td>ECI (J2000)</td><td>Propagation & screening</td><td>Fixed to stars</td></tr>
+                        <tr><td>Perifocal (PQW)</td><td>Orbit ↔ state conversion</td><td>Aligned with orbit ellipse</td></tr>
+                        <tr><td>RTN</td><td>Maneuver specification</td><td>Radial, Transverse, Normal</td></tr>
+                        <tr><td>Encounter Plane</td><td>Pc computation</td><td>⊥ to relative velocity at TCA</td></tr>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- CONJUNCTION ASSESSMENT SECTION -->
+        <!-- ============================================================ -->
+        <section id="conjunction" class="section">
+            <h2 class="section-title">
+                <span class="icon" style="background:rgba(239,68,68,0.15)">&#9888;</span>
+                Conjunction Assessment
+            </h2>
+            <p class="section-desc">
+                Screening O(N²) pairs, finding Time of Closest Approach, computing Probability of
+                Collision via covariance projection into the encounter plane.
+            </p>
+
+            <!-- Screening Pipeline -->
+            <div class="card" style="margin-bottom:1.5rem">
+                <div class="card-header">
+                    <div class="card-icon blue">&#128269;</div>
+                    <div class="card-title">Progressive Screening Filters</div>
+                </div>
+                <div class="card-body">
+                    <p>With N=10,000 objects → 50 million pairs. Progressive elimination:</p>
+                    <table class="data-table">
+                        <tr><th>Filter</th><th>Method</th><th>Elimination Rate</th><th>Remaining</th></tr>
+                        <tr><td>1. Apogee-Perigee</td><td>If perigee₁ > apogee₂ → no conjunction</td><td>~80%</td><td>~10M</td></tr>
+                        <tr><td>2. Orbital Plane</td><td>Non-intersecting planes → skip</td><td>~60%</td><td>~4M</td></tr>
+                        <tr><td>3. Coarse Ephemeris</td><td>Propagate, check dist < 5km</td><td>~99.99%</td><td>~1000</td></tr>
+                        <tr><td>4. Refined TCA</td><td>scipy.optimize.minimize_scalar</td><td>variable</td><td>~100-500</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <!-- Pc Computation -->
+                <div class="card card-full">
+                    <div class="card-header">
+                        <div class="card-icon red">&#128165;</div>
+                        <div class="card-title">Probability of Collision (Pc) — The Core Metric</div>
+                    </div>
+                    <div class="card-body">
+                        <p>The 2D Gaussian integral over the combined hard-body cross-section in the encounter plane:</p>
+                        <div class="math-block">
+                            <span class="math-label">Alfriend/Akella formulation</span>
+                            $$P_c = \frac{1}{2\pi|C_{2D}|^{1/2}} \iint_A \exp\left(-\frac{1}{2}\mathbf{x}^T C_{2D}^{-1} \mathbf{x}\right) d\xi\, d\zeta$$
                         </div>
-                        <div class="const-stat">
-                            <span class="const-icon cube"></span>
-                            <span class="const-label">CubeSat</span>
-                            <span class="const-value" id="c-cube">--</span>
+                        <p>Where:</p>
+                        <div class="math-block">
+                            <span class="math-label">Combined covariance in encounter plane</span>
+                            $$C_{2D} = P_{proj} \cdot (C_1^{pos} + C_2^{pos}) \cdot P_{proj}^T$$
                         </div>
-                        <div class="const-stat">
-                            <span class="const-icon debris"></span>
-                            <span class="const-label">Debris</span>
-                            <span class="const-value" id="c-debris">--</span>
+                        <div class="math-block">
+                            <span class="math-label">Integration domain</span>
+                            $$A = \{(\xi, \zeta) : \xi^2 + \zeta^2 \leq (R_1 + R_2)^2\}$$
+                        </div>
+                        <p>Computed numerically via eigendecomposition + polar coordinate integration (50 radial × 100 angular samples).</p>
+                    </div>
+                </div>
+
+                <!-- Risk scoring -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange">&#128200;</div>
+                        <div class="card-title">Composite Risk Score</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="math-block">
+                            <span class="math-label">Risk formulation</span>
+                            $$\text{Risk}_j = P_{c,j} \times N_{\text{debris}} \times C_{\text{cascade}}$$
+                        </div>
+                        <div class="math-block">
+                            <span class="math-label">Cascade factor</span>
+                            $$C_{\text{cascade}} = 1 + \rho_{\text{shell}} \cdot \log_{10}(\tau_{\text{lifetime}})$$
+                        </div>
+                        <p>Debris in crowded, long-lived orbital shells receives exponentially higher risk weighting.</p>
+                    </div>
+                </div>
+
+                <!-- Debris estimation -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon red">&#128163;</div>
+                        <div class="card-title">NASA Breakup Fragment Count</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="math-block">
+                            <span class="math-label">Catastrophic collision</span>
+                            $$N(L > L_c) = 0.1 \cdot M_{\text{total}}^{0.75} \cdot L_c^{-1.71}$$
+                        </div>
+                        <div class="math-block">
+                            <span class="math-label">Non-catastrophic collision</span>
+                            $$N(L > L_c) = 0.1 \cdot m_p^{0.75} \cdot v_{\text{rel}}^{0.5} \cdot L_c^{-1.71}$$
+                        </div>
+                        <p>Example: 310 kg catastrophic collision → ~360 trackable fragments (>10 cm).</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- AVOIDANCE SECTION -->
+        <!-- ============================================================ -->
+        <section id="avoidance" class="section">
+            <h2 class="section-title">
+                <span class="icon" style="background:rgba(16,185,129,0.15)">&#128640;</span>
+                Collision Avoidance Maneuver Planning
+            </h2>
+            <p class="section-desc">
+                STM-based optimal maneuver direction, timing optimization, fuel-constrained
+                multi-conjunction joint planning.
+            </p>
+
+            <div class="card-grid">
+                <!-- Maneuver effectiveness -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon green">&#127919;</div>
+                        <div class="card-title">Maneuver Effectiveness (STM-based)</div>
+                    </div>
+                    <div class="card-body">
+                        <p>How a velocity change at maneuver time maps to position change at TCA:</p>
+                        <div class="math-block">
+                            <span class="math-label">Position sensitivity to Δv</span>
+                            $$\Delta\mathbf{r}(t_{\text{TCA}}) = \Phi_{rv}(t_{\text{TCA}}, t_{\text{man}}) \cdot \Delta\mathbf{v}(t_{\text{man}})$$
+                        </div>
+                        <p>Φ_rv is the upper-right 3×3 block of the State Transition Matrix. It tells us exactly how effective each burn direction is.</p>
+                    </div>
+                </div>
+
+                <!-- Optimal direction -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon cyan">&#128204;</div>
+                        <div class="card-title">Optimal Δv Direction</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Maximize miss distance change per unit of fuel expended:</p>
+                        <div class="math-block">
+                            <span class="math-label">Optimal burn direction</span>
+                            $$\hat{\Delta v}_{\text{opt}} = \frac{\Phi_{rv}^T \cdot \hat{m}}{|\Phi_{rv}^T \cdot \hat{m}|}$$
+                        </div>
+                        <p>Where $\hat{m}$ is the unit miss vector direction. This pushes the encounter geometry apart most efficiently.</p>
+                    </div>
+                </div>
+
+                <!-- Timing -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue">&#9202;</div>
+                        <div class="card-title">Maneuver Timing</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Earlier maneuvers are more efficient — small Δv accumulates into large position change:</p>
+                        <div class="math-block">
+                            <span class="math-label">Rule of thumb</span>
+                            $$\Delta_{\text{miss}} \approx |\Phi_{rv}| \cdot |\Delta v| \propto (t_{\text{TCA}} - t_{\text{man}})$$
+                        </div>
+                        <p>1 cm/s burn, 1 orbit before TCA → ~100 m miss distance change. The code samples effectiveness across candidate times and picks the maximum.</p>
+                    </div>
+                </div>
+
+                <!-- Multi-conjunction -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon purple">&#128279;</div>
+                        <div class="card-title">Multi-Conjunction Joint Optimization</div>
+                    </div>
+                    <div class="card-body">
+                        <p>A single maneuver can resolve multiple conjunctions. Nelder-Mead optimization:</p>
+                        <div class="math-block">
+                            <span class="math-label">Objective function</span>
+                            $$\min_{\Delta\mathbf{v}} \sum_j e^{-d_j / 0.5\text{km}} + 0.1\left(\frac{|\Delta\mathbf{v}|}{\Delta v_{\text{avail}}}\right)^2$$
+                        </div>
+                        <p>Simultaneously minimizes all conjunction risks (exponential penalty for small miss distances) while penalizing fuel usage quadratically.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision Logic -->
+            <div class="card" style="margin-top:1.5rem">
+                <div class="card-header">
+                    <div class="card-icon orange">&#129504;</div>
+                    <div class="card-title">Decision Framework</div>
+                </div>
+                <div class="card-body">
+                    <div class="decision-tree">
+                        <div class="decision-node">
+                            <div class="decision-dot red"></div>
+                            <div class="decision-condition">Pc ≥ 10⁻⁴</div>
+                            <div class="decision-action"><strong>MANEUVER</strong> — Strongly recommended, imminent danger</div>
+                        </div>
+                        <div class="decision-node">
+                            <div class="decision-dot orange"></div>
+                            <div class="decision-condition">Pc ≥ 10⁻⁵</div>
+                            <div class="decision-action"><strong>CONSIDER</strong> — Cost-benefit analysis, fuel permitting</div>
+                        </div>
+                        <div class="decision-node">
+                            <div class="decision-dot yellow"></div>
+                            <div class="decision-condition">Pc ≥ 10⁻⁶</div>
+                            <div class="decision-action"><strong>MONITOR</strong> — Refine tracking, watch for escalation</div>
+                        </div>
+                        <div class="decision-node">
+                            <div class="decision-dot green"></div>
+                            <div class="decision-condition">Pc &lt; 10⁻⁷</div>
+                            <div class="decision-action"><strong>ACCEPT</strong> — Normal operations, risk is negligible</div>
+                        </div>
+                    </div>
+                    <p style="margin-top:1rem;font-size:0.85rem;color:var(--text-muted)">
+                        Modified by fuel state: below 5 m/s remaining, only maneuver for Pc > 10⁻³. Below 10 m/s, use conservative thresholds.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- DAMAGE MINIMIZATION SECTION -->
+        <!-- ============================================================ -->
+        <section id="damage" class="section">
+            <h2 class="section-title">
+                <span class="icon" style="background:rgba(239,68,68,0.15)">&#128165;</span>
+                Damage Minimization
+            </h2>
+            <p class="section-desc">
+                When collision is unavoidable: NASA breakup model physics, impact geometry optimization,
+                and five ranked mitigation strategies.
+            </p>
+
+            <!-- Catastrophic threshold -->
+            <div class="formula-showcase">
+                <div class="formula-item">
+                    <div class="label">Specific Collision Energy</div>
+                    <div class="formula">$$E_{\text{spec}} = \frac{\frac{1}{2} m_p v_{\text{rel}}^2}{m_t}$$</div>
+                    <div class="desc">Energy per unit target mass</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Catastrophic Threshold</div>
+                    <div class="formula">$$E_{\text{cat}} = 40{,}000 \text{ J/kg}$$</div>
+                    <div class="desc">Above this: complete fragmentation of both objects</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Fragment Size Distribution</div>
+                    <div class="formula">$$p(L) \propto L^{-2.71}$$</div>
+                    <div class="desc">Power law — many small, few large fragments</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Fragment Ejection Velocity</div>
+                    <div class="formula">$$\sigma_v \approx 0.3\sqrt{\frac{E_{\text{spec}}}{E_{\text{cat}}}} \text{ km/s}$$</div>
+                    <div class="desc">Log-normal distribution around parent velocity</div>
+                </div>
+            </div>
+
+            <!-- Strategies -->
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon green">&#128260;</div>
+                        <div class="card-title">1. Minimum Cross-Section (Free)</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Rotate to present smallest face to impact direction. Zero fuel cost.</p>
+                        <div class="math-block">
+                            $$A_{\text{eff}} = A_{\text{min}} \approx \frac{A_{\text{nominal}}}{5}$$
+                        </div>
+                        <p>Reduces collision probability by ~80% and damage by ~55%. Always the first action taken.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon cyan">&#8599;</div>
+                        <div class="card-title">2. Glancing Impact Geometry</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Shift trajectory for tangential rather than head-on collision:</p>
+                        <div class="math-block">
+                            $$E_{\text{effective}} = E \cdot \sin^2(\theta)$$
+                        </div>
+                        <p>At θ = 15° (glancing): energy reduction of 93%. Only ~0.5 m/s Δv needed for the geometry shift.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue">&#9196;</div>
+                        <div class="card-title">3. Reduce Relative Velocity</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Burn anti-parallel to relative velocity to lower impact energy:</p>
+                        <div class="math-block">
+                            $$N_{\text{fragments}} \propto v_{\text{rel}}^{0.5}$$
+                        </div>
+                        <p>Crossing the catastrophic threshold (40 kJ/kg) is the key goal. Below it: localized damage, not complete fragmentation.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange">&#11015;</div>
+                        <div class="card-title">4. Lower Collision Altitude</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Move collision point to lower altitude where drag removes debris quickly:</p>
+                        <table class="data-table">
+                            <tr><th>Altitude</th><th>Debris Lifetime</th></tr>
+                            <tr><td>&lt; 300 km</td><td>Days to weeks</td></tr>
+                            <tr><td>350-400 km</td><td>~1 year</td></tr>
+                            <tr><td>600-800 km</td><td>25-200 years</td></tr>
+                            <tr><td>&gt; 900 km</td><td>1000+ years</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon red">&#128308;</div>
+                        <div class="card-title">5. Controlled Deorbit (Last Resort)</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Sacrifice the spacecraft to prevent the collision entirely:</p>
+                        <div class="math-block">
+                            <span class="math-label">Deorbit Δv (Hohmann)</span>
+                            $$\Delta v = v_c\left(1 - \sqrt{\frac{r_{\text{target}}}{r_{\text{current}}}}\right)$$
+                        </div>
+                        <p>Typically requires 100-200 m/s — often exceeds remaining budget. Eliminates collision but ends the mission.</p>
+                    </div>
+                </div>
+
+                <!-- Debris orbit spread -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon purple">&#128171;</div>
+                        <div class="card-title">Debris Orbital Spread</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Fragment ejection velocities change orbital elements:</p>
+                        <div class="math-block">
+                            $$\Delta a \approx \frac{2a^2 v}{\mu} \Delta v_T$$
+                        </div>
+                        <div class="math-block">
+                            $$\Delta i \approx \frac{r\cos(\omega+\nu)}{na^2\sqrt{1-e^2}} \Delta v_N$$
+                        </div>
+                        <p>Tangential Δv spreads altitude; Normal Δv spreads inclination. Creates a debris "shell" around the collision point.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- AI OPTIMIZER SECTION -->
+        <!-- ============================================================ -->
+        <section id="optimizer" class="section">
+            <h2 class="section-title">
+                <span class="icon" style="background:var(--glow-purple)">&#129504;</span>
+                AI Risk Optimizer
+            </h2>
+            <p class="section-desc">
+                Graph-based risk modeling, Kessler syndrome detection, and three optimization
+                strategies: Greedy, Network Flow, and Monte Carlo Tree Search.
+            </p>
+
+            <div class="card-grid">
+                <!-- MDP Formulation -->
+                <div class="card card-full">
+                    <div class="card-header">
+                        <div class="card-icon purple">&#127922;</div>
+                        <div class="card-title">Markov Decision Process (MDP) Formulation</div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <tr><th>Component</th><th>Definition</th><th>Dimensions</th></tr>
+                            <tr><td><strong>State</strong></td><td>Orbital elements + covariances + fuel levels</td><td>6N + 21N + N continuous</td></tr>
+                            <tr><td><strong>Action</strong></td><td>Δv vector + timing for each spacecraft</td><td>4N continuous</td></tr>
+                            <tr><td><strong>Transition</strong></td><td>Orbital mechanics + stochastic perturbations</td><td>Deterministic + noise</td></tr>
+                            <tr><td><strong>Reward</strong></td><td>−α·ΣPc − β·Σ|Δv| − γ·E[debris] + δ·clearance</td><td>Scalar</td></tr>
+                        </table>
+                        <div class="math-block" style="margin-top:1rem">
+                            <span class="math-label">Cascade-aware total risk</span>
+                            $$\text{Risk}_{\text{total}} = \text{Risk}_{\text{direct}} + \sum_j P(\text{collision}_j) \cdot \mathbb{E}[\text{Risk}_{\text{cascade},j}]$$
                         </div>
                     </div>
                 </div>
 
-                <!-- Risk Timeline -->
-                <div class="panel-section">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128200;</span>
-                        Risk Timeline (24h)
-                    </h3>
-                    <canvas id="risk-chart" width="280" height="120"></canvas>
-                </div>
-
-                <!-- Maneuver Queue -->
-                <div class="panel-section flex-grow">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128640;</span>
-                        Maneuver Queue
-                    </h3>
-                    <div class="maneuver-list" id="maneuver-list">
-                        <!-- Populated by JS -->
+                <!-- Risk Graph -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue">&#128336;</div>
+                        <div class="card-title">Risk Graph (NetworkX)</div>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Nodes</strong> = spacecraft (mass, altitude, fuel, maneuverability)</p>
+                        <p><strong>Edges</strong> = conjunctions (weighted by risk score)</p>
+                        <p>Operations:</p>
+                        <ul style="list-style:none;padding:0;margin-top:0.5rem">
+                            <li style="padding:0.3rem 0">&#8226; Cluster detection (connected components above risk threshold)</li>
+                            <li style="padding:0.3rem 0">&#8226; BFS cascade propagation (depth-limited)</li>
+                            <li style="padding:0.3rem 0">&#8226; Most-threatened node identification</li>
+                        </ul>
                     </div>
                 </div>
 
-                <!-- Altitude Distribution -->
-                <div class="panel-section">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#127757;</span>
-                        Altitude Distribution
-                    </h3>
-                    <canvas id="altitude-chart" width="280" height="100"></canvas>
+                <!-- Kessler -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon red">&#9889;</div>
+                        <div class="card-title">Kessler Syndrome Detection</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Per altitude shell (50 km bands), check stability:</p>
+                        <div class="math-block">
+                            <span class="math-label">Population dynamics</span>
+                            $$\frac{dN}{dt} = S(t) - D(t) + C(t)$$
+                        </div>
+                        <div class="math-block">
+                            <span class="math-label">Instability condition</span>
+                            $$C(t) = k \cdot N^2 \cdot v_{\text{rel}} \cdot \sigma > D(t)$$
+                        </div>
+                        <p>When collision-generated fragments exceed drag removal → runaway growth. Currently critical at 800-1000 km.</p>
+                    </div>
                 </div>
-            </aside>
-        </div>
+
+                <!-- Greedy -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon green">&#9654;</div>
+                        <div class="card-title">Strategy 1: Greedy</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Handle highest-risk conjunction first, iterate. Simple baseline.</p>
+                        <div class="code-block">
+                            <span class="keyword">for</span> conj <span class="keyword">in</span> sorted(conjunctions, key=risk):<br>
+                            &nbsp;&nbsp;<span class="keyword">if</span> should_maneuver(conj):<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;maneuver = design_avoidance(conj)<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;apply(maneuver) <span class="comment"># Updates state</span>
+                        </div>
+                        <p>~90% optimal. O(N log N) complexity. Used for ≤5 conjunctions.</p>
+                    </div>
+                </div>
+
+                <!-- Network Flow -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon cyan">&#128296;</div>
+                        <div class="card-title">Strategy 2: Network Flow</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Formulated as min-cost maximum flow:</p>
+                        <ul style="list-style:none;padding:0">
+                            <li style="padding:0.3rem 0">&#8226; Source → conjunction nodes (capacity = risk)</li>
+                            <li style="padding:0.3rem 0">&#8226; Conjunction → spacecraft nodes (who can resolve)</li>
+                            <li style="padding:0.3rem 0">&#8226; Spacecraft → sink (capacity = fuel budget)</li>
+                        </ul>
+                        <p style="margin-top:0.5rem">Solves via <code>nx.maximum_flow()</code>. Optimal fuel allocation across constellation. Used for 5-50 conjunctions.</p>
+                    </div>
+                </div>
+
+                <!-- MCTS -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon purple">&#127922;</div>
+                        <div class="card-title">Strategy 3: Monte Carlo Tree Search</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Same algorithm that beat humans at Go. Explores intervention sequences:</p>
+                        <div class="math-block">
+                            <span class="math-label">UCB1 selection criterion</span>
+                            $$\text{UCB1} = \frac{Q}{N} + c\sqrt{\frac{\ln N_{\text{parent}}}{N}}$$
+                        </div>
+                        <p>100 simulations × max depth 10. Each simulation: select → expand → rollout → backpropagate. Handles sequential dependencies and cascade effects. Used for 50+ conjunctions.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fuel allocation -->
+            <div class="card" style="margin-top:1.5rem">
+                <div class="card-header">
+                    <div class="card-icon orange">&#9981;</div>
+                    <div class="card-title">Dynamic Fuel Allocation</div>
+                </div>
+                <div class="card-body">
+                    <div class="math-block">
+                        $$\text{Reserve}_i = \underbrace{0.3 \cdot \Delta v_{\text{remaining}}}_{\text{base reserve}} + \underbrace{\min\left(N_{\text{expected}} \cdot 5\text{m/s},\; 0.5 \cdot \Delta v_{\text{remaining}}\right)}_{\text{risk-adjusted}}$$
+                    </div>
+                    <p>Spacecraft in crowded shells or facing many future conjunctions maintain larger reserves. Prevents fuel exhaustion before mission end.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- CONSTANTS SECTION -->
+        <!-- ============================================================ -->
+        <section id="constants" class="section">
+            <h2 class="section-title">
+                <span class="icon" style="background:rgba(245,158,11,0.15)">&#128202;</span>
+                Constants & Reference Data
+            </h2>
+            <p class="section-desc">
+                Physical constants, empirical parameters, and decision thresholds used throughout the system.
+            </p>
+
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue">&#127760;</div>
+                        <div class="card-title">Physical Constants</div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <tr><th>Constant</th><th>Value</th><th>Description</th></tr>
+                            <tr><td>μ_Earth</td><td>398,600.4418 km³/s²</td><td>Gravitational parameter</td></tr>
+                            <tr><td>R_Earth</td><td>6,378.137 km</td><td>Equatorial radius</td></tr>
+                            <tr><td>J₂</td><td>1.08263 × 10⁻³</td><td>Oblateness coefficient</td></tr>
+                            <tr><td>ω_Earth</td><td>7.2921 × 10⁻⁵ rad/s</td><td>Rotation rate</td></tr>
+                            <tr><td>P_SR</td><td>4.56 × 10⁻⁶ N/m²</td><td>Solar radiation pressure</td></tr>
+                            <tr><td>v_circ(400km)</td><td>7.67 km/s</td><td>Circular velocity</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange">&#128736;</div>
+                        <div class="card-title">Spacecraft Parameters</div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <tr><th>Type</th><th>Mass</th><th>Area</th><th>Δv Budget</th></tr>
+                            <tr><td>Large comsat</td><td>250-350 kg</td><td>15-30 m²</td><td>30-60 m/s</td></tr>
+                            <tr><td>Earth obs</td><td>500-2000 kg</td><td>5-20 m²</td><td>20-40 m/s</td></tr>
+                            <tr><td>CubeSat</td><td>1-10 kg</td><td>0.01-0.1 m²</td><td>0-5 m/s</td></tr>
+                            <tr><td>Defunct/debris</td><td>100-5000 kg</td><td>1-50 m²</td><td>0 m/s</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon red">&#128680;</div>
+                        <div class="card-title">Decision Thresholds</div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <tr><th>Parameter</th><th>Value</th><th>Action</th></tr>
+                            <tr><td>Pc ≥ 10⁻⁴</td><td>1 in 10,000</td><td>Maneuver</td></tr>
+                            <tr><td>Pc ≥ 10⁻⁵</td><td>1 in 100,000</td><td>Consider</td></tr>
+                            <tr><td>Pc ≥ 10⁻⁶</td><td>1 in 1,000,000</td><td>Monitor</td></tr>
+                            <tr><td>Pc &lt; 10⁻⁷</td><td>1 in 10,000,000</td><td>Accept</td></tr>
+                            <tr><td>E_catastrophic</td><td>40,000 J/kg</td><td>Complete breakup</td></tr>
+                            <tr><td>Fuel critical</td><td>&lt; 5 m/s</td><td>Emergency only</td></tr>
+                            <tr><td>Screening dist</td><td>5 km</td><td>Flag for analysis</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon green">&#128187;</div>
+                        <div class="card-title">Numerical Methods</div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <tr><th>Method</th><th>Used For</th><th>Config</th></tr>
+                            <tr><td>DOP853 (RK8)</td><td>Orbit propagation</td><td>rtol=10⁻¹⁰, atol=10⁻¹²</td></tr>
+                            <tr><td>Newton-Raphson</td><td>Kepler's equation</td><td>tol=10⁻¹², max 50 iter</td></tr>
+                            <tr><td>Brent/Bounded</td><td>TCA refinement</td><td>xatol=0.1s</td></tr>
+                            <tr><td>Nelder-Mead</td><td>Multi-conj optimization</td><td>500 iterations</td></tr>
+                            <tr><td>MCTS (UCB1)</td><td>Sequential planning</td><td>100 sims, depth 10</td></tr>
+                            <tr><td>Max-flow</td><td>Network optimization</td><td>NetworkX Ford-Fulkerson</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
     </div>
 
-    <!-- Three.js and app scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="app.js"></script>
+    <script>
+        // Navigation
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Render math after page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof renderMathInElement !== 'undefined') {
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false}
+                    ],
+                    throwOnError: false
+                });
+            }
+        });
+
+        // Retry KaTeX render after script loads
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                if (typeof renderMathInElement !== 'undefined') {
+                    renderMathInElement(document.body, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false}
+                        ],
+                        throwOnError: false
+                    });
+                }
+            }, 500);
+        });
+    </script>
 </body>
 </html>
