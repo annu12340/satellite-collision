@@ -119,6 +119,44 @@
                     </div>
                 </div>
 
+                <!-- Live Telemetry (populates dynamically while a scenario runs) -->
+                <div class="panel-section telemetry-section">
+                    <h3 class="section-title">
+                        <span class="title-icon">&#128225;</span>
+                        Live Telemetry
+                        <span class="sim-status-badge idle" id="telemetry-badge">IDLE</span>
+                    </h3>
+                    <div class="telemetry-readout">
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">Range</span>
+                            <span class="telemetry-value" id="tel-range">-- km</span>
+                        </div>
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">Closing Vel.</span>
+                            <span class="telemetry-value" id="tel-vel">-- km/s</span>
+                        </div>
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">Proximity</span>
+                            <span class="telemetry-value" id="tel-proximity">--</span>
+                        </div>
+                    </div>
+                    <canvas id="telemetry-chart" width="260" height="92"></canvas>
+
+                    <!-- Physics equation, evaluated live with the current frame's numbers -->
+                    <div class="physics-readout" id="physics-readout">
+                        <div class="physics-row">
+                            <span class="physics-eq">d(t) = |r&#8321;(t) &minus; r&#8322;(t)|</span>
+                            <span class="physics-eq-live" id="physics-eq-dist">= -- km</span>
+                        </div>
+                        <div class="physics-row">
+                            <span class="physics-eq">v_rel = &minus;&Delta;d/&Delta;t</span>
+                            <span class="physics-eq-live" id="physics-eq-vel">= -- km/s</span>
+                        </div>
+                    </div>
+
+                    <div class="telemetry-hint" id="telemetry-hint">Run a scenario (Live Events panel) to see live range telemetry</div>
+                </div>
+
                 <!-- Constellation (compact row) -->
                 <div class="panel-section compact">
                     <h3 class="section-title">
@@ -242,6 +280,9 @@
                         <button class="vp-btn" id="btn-reset" title="Reset Camera">
                             <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 2v3M8 11v3M2 8h3M11 8h3" stroke="currentColor" stroke-width="1.5"/></svg>
                         </button>
+                        <button class="vp-btn" id="btn-view-orbits3d" title="View Orbits 3D Plot">
+                            <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" fill="none" stroke-width="1.5"/><circle cx="8" cy="8" r="3.2" stroke="currentColor" fill="none" stroke-width="1.2"/><path d="M3 8h1.5M11.5 8H13M8 3v1.5M8 11.5V13" stroke="currentColor" stroke-width="1.2"/></svg>
+                        </button>
                     </div>
                 </div>
 
@@ -314,15 +355,72 @@
                     </div>
                 </div>
 
+                <!-- Full Simulation Run (regenerates all dynamic charts) -->
+                <div class="panel-section hidden">
+                    <h3 class="section-title">
+                        <span class="title-icon">&#128260;</span>
+                        Run Full Simulation
+                        <span class="sim-status-badge idle" id="fullsim-status">IDLE</span>
+                    </h3>
+                    <p class="fullsim-hint">Re-runs the constellation, conjunction, and risk-projection pipeline with a new random seed, then refreshes every chart below.</p>
+                    <button id="fullsim-run-btn" class="sim-btn sim-btn-play fullsim-btn">&#9851; RUN SIMULATION</button>
+                </div>
+
                 <!-- Risk Timeline -->
-                <div class="panel-section">
+                <div class="panel-section hidden">
                     <h3 class="section-title">
                         <span class="title-icon">&#128200;</span>
                         Risk Timeline (24h)
                     </h3>
                     <canvas id="risk-chart" width="280" height="140"></canvas>
                 </div>
+
+                <!-- Risk Evolution (multi-year projection) -->
+                <div class="panel-section hidden">
+                    <h3 class="section-title">
+                        <span class="title-icon">&#128202;</span>
+                        Risk Evolution (10yr)
+                    </h3>
+                    <div class="chart-tabs">
+                        <button class="chart-tab active" data-evo="pc">Pc</button>
+                        <button class="chart-tab" data-evo="debris">Debris</button>
+                        <button class="chart-tab" data-evo="kessler">Kessler</button>
+                        <button class="chart-tab" data-evo="fuel">Fuel</button>
+                    </div>
+                    <canvas id="risk-evolution-chart" width="280" height="140"></canvas>
+                </div>
+
+                <!-- Debris Analysis (highest-risk conjunction breakup) -->
+                <div class="panel-section hidden">
+                    <h3 class="section-title">
+                        <span class="title-icon">&#128165;</span>
+                        Debris Analysis
+                    </h3>
+                    <div class="debris-summary" id="debris-summary">Awaiting simulation data...</div>
+                    <div class="chart-tabs">
+                        <button class="chart-tab active" data-debris="size">Size</button>
+                        <button class="chart-tab" data-debris="altitude">Altitude</button>
+                        <button class="chart-tab" data-debris="lifetime">Lifetime</button>
+                    </div>
+                    <canvas id="debris-analysis-chart" width="280" height="140"></canvas>
+                </div>
             </aside>
+        </div>
+    </div>
+
+    <!-- Orbits 3D Plot Modal -->
+    <div id="orbits3d-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span>&#127760; Orbital Configuration (3D Plot)</span>
+                <button id="orbits3d-close" class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <img id="orbits3d-img" src="" alt="3D plot of spacecraft orbits, conjunctions, and maneuvers">
+                <p id="orbits3d-empty" class="modal-empty hidden">
+                    No orbits_3d.png found yet. Click "RUN SIMULATION" to generate one.
+                </p>
+            </div>
         </div>
     </div>
 

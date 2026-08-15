@@ -517,6 +517,25 @@ body {
     overflow: hidden;
 }
 
+.viewport-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px);
+    z-index: 5;
+    opacity: 0.4;
+}
+
+.viewport-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(10,14,23,0.55) 100%);
+    z-index: 6;
+}
+
 #three-viewport {
     width: 100%;
     height: 100%;
@@ -823,6 +842,15 @@ body {
     box-shadow: inset 0 0 0 1px rgba(255, 45, 85, 0.2);
 }
 
+.metric-card.critical.has-critical-risk {
+    animation: pulse-critical-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-critical-glow {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 45, 85, 0.2); }
+    50% { box-shadow: inset 0 0 0 1px rgba(255, 45, 85, 0.4), 0 0 16px rgba(255, 45, 85, 0.25); }
+}
+
 .conjunction-item.critical-glow {
     box-shadow: 0 0 12px rgba(255, 45, 85, 0.15);
     border-color: rgba(255, 45, 85, 0.3);
@@ -1073,7 +1101,7 @@ body {
 }
 
 .sim-event-log {
-    max-height: 180px;
+    max-height: 400px;
     overflow-y: auto;
     padding: 6px;
     background: rgba(10, 14, 23, 0.6);
@@ -1230,6 +1258,105 @@ body {
     font-size: 0.5rem;
 }
 
+/* ============================================================================
+   LIVE TELEMETRY (left sidebar, dynamic chart populated during playback)
+   ============================================================================ */
+
+.telemetry-section {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.04), rgba(123, 47, 247, 0.04));
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: var(--radius);
+    margin: 10px 10px 0;
+    padding: 10px 12px;
+}
+
+.telemetry-section .section-title {
+    margin-bottom: 8px;
+}
+
+.telemetry-readout {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.telemetry-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 6px 6px;
+    text-align: center;
+}
+
+.telemetry-label {
+    display: block;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+}
+
+.telemetry-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    white-space: nowrap;
+}
+
+.telemetry-value.success { color: var(--risk-low); }
+.telemetry-value.warning { color: var(--risk-high); }
+.telemetry-value.critical-text { color: var(--risk-critical); }
+
+#telemetry-chart {
+    width: 100%;
+    border-radius: var(--radius-sm);
+    display: block;
+}
+
+.telemetry-hint {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+.physics-readout {
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(10, 14, 23, 0.5);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.physics-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.physics-eq {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.physics-eq-live {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    white-space: nowrap;
+}
+
 /* Right panel: only sim + timeline, give sim more room */
 .panel-right .sim-panel {
     flex: 1;
@@ -1238,5 +1365,167 @@ body {
 }
 
 .panel-right .sim-event-log {
-    max-height: 240px;
+    max-height: 480px;
+}
+
+/* ============================================================================
+   FULL SIMULATION RUN + DYNAMIC CHARTS
+   ============================================================================ */
+
+.fullsim-hint {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+.fullsim-btn {
+    width: 100%;
+}
+
+.fullsim-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sim-status-badge.running {
+    background: rgba(0, 212, 255, 0.15);
+    color: var(--accent-blue);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    animation: pulse-badge 1s ease-in-out infinite;
+}
+
+#risk-evolution-chart, #debris-analysis-chart {
+    width: 100%;
+    border-radius: var(--radius-sm);
+}
+
+.chart-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.chart-tab {
+    flex: 1;
+    padding: 4px 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.chart-tab:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.chart-tab.active {
+    color: var(--accent-blue);
+    background: rgba(0, 212, 255, 0.1);
+    border-color: rgba(0, 212, 255, 0.3);
+}
+
+.debris-summary {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    margin-bottom: 10px;
+}
+
+.debris-summary .catastrophic {
+    color: var(--risk-critical);
+    font-weight: 700;
+}
+
+.debris-summary .non-catastrophic {
+    color: var(--risk-low);
+    font-weight: 700;
+}
+
+/* ============================================================================
+   ORBITS 3D MODAL
+   ============================================================================ */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 8, 14, 0.8);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.modal-box {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-glow);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+    max-width: min(90vw, 1100px);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    letter-spacing: 0.5px;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color 0.15s ease;
+}
+
+.modal-close:hover {
+    color: var(--risk-critical);
+}
+
+.modal-body {
+    padding: 16px;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-body img {
+    max-width: 100%;
+    max-height: 78vh;
+    border-radius: var(--radius-sm);
+    display: block;
+}
+
+.modal-empty {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    padding: 40px;
+    text-align: center;
 }

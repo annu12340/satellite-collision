@@ -14,6 +14,11 @@ let orbitLines = [], spacecraftMeshes = [], conjunctionLines = [];
 let debrisParticles = null, shellMeshes = [];
 let raycaster, mouse;
 let simData = null;
+let radarSweep = null;
+
+// Real-time orbital motion for constellation spacecraft
+const ORBIT_SPEED_MULTIPLIER = 60;
+const simClockStart = Date.now();
 
 // Visualization state
 const vizState = {
@@ -31,6 +36,19 @@ const vizState = {
 const SCALE = 1.0 / 6378.137;
 const EARTH_RADIUS = 1.0;
 
+// Which metric is currently shown in the dynamic multi-tab charts
+const chartState = {
+    evoMetric: 'pc',       // pc | debris | kessler | fuel
+    debrisMetric: 'size',  // size | altitude | lifetime
+};
+
+// Live telemetry chart (left sidebar) - fills in as a scenario plays back
+const teleState = {
+    scenario: null,
+    history: [],      // [{ frame, t, dist, closingVel }]
+    prevDist: undefined,
+};
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -39,12 +57,24 @@ async function init() {
     updateLoadStatus('Fetching simulation data...', 20);
 
     try {
-        const response = await fetch('/api/all');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const response = await fetch('/api/all', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+        }
         simData = await response.json();
         updateLoadStatus('Building 3D scene...', 50);
     } catch (err) {
         console.error('Failed to fetch simulation data:', err);
-        updateLoadStatus('Error connecting to server. Retrying...', 20);
+        const isTimeout = err.name === 'AbortError';
+        updateLoadStatus(
+            isTimeout
+                ? 'Server busy (simulation running?). Retrying...'
+                : 'Error connecting to server. Retrying...',
+            20
+        );
         setTimeout(init, 2000);
         return;
     }
@@ -53,6 +83,7 @@ async function init() {
     updateLoadStatus('Creating Earth...', 60);
 
     createEarth();
+    createRadarSweep();
     updateLoadStatus('Generating orbits...', 70);
 
     createOrbits();
@@ -68,6 +99,12 @@ async function init() {
     setupControls();
     setupInteraction();
     initSimulationPanel();
+    initChartTabs();
+    initFullSimulationControl();
+    initOrbits3dModal();
+    drawTelemetryChart();
+
+    setInterval(updateClock, 1000);
 
     updateLoadStatus('Ready', 100);
     setTimeout(showDashboard, 600);
@@ -375,6 +412,22 @@ function createEarth() {
     scene.add(outerGlow);
 }
 
+function createRadarSweep() {
+    const sweepGeometry = new THREE.CircleGeometry(EARTH_RADIUS * 1.3, 64, 0, Math.PI / 6);
+    const sweepMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00d4ff,
+        transparent: true,
+        opacity: 0.08,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    radarSweep = new THREE.Mesh(sweepGeometry, sweepMaterial);
+    radarSweep.rotation.x = Math.PI / 2;
+    scene.add(radarSweep);
+}
+
 // ============================================================================
 // ORBITS
 // ============================================================================
@@ -479,6 +532,14 @@ function createSpacecraft() {
         sprite.scale.set(size, size, size);
         sprite.userData = { type: 'spacecraft', data: sc, index: idx };
 
+        // Precompute the orbit path in scene-space for real-time motion
+        if (sc.orbit_path && sc.orbit_path.length > 1 && sc.period_min) {
+            sprite.userData.orbitPoints = sc.orbit_path.map(p =>
+                new THREE.Vector3(p[0] * SCALE, p[2] * SCALE, p[1] * SCALE)
+            );
+            sprite.userData.periodSec = sc.period_min * 60;
+        }
+
         scGroup.add(sprite);
         spacecraftMeshes.push(sprite);
 
@@ -494,10 +555,40 @@ function createSpacecraft() {
             const glow = new THREE.Mesh(glowGeom, glowMat);
             glow.position.copy(pos);
             scGroup.add(glow);
+            sprite.userData.glowMesh = glow;
         }
     });
 
     scene.add(scGroup);
+}
+
+/**
+ * Advance each constellation spacecraft sprite along its precomputed
+ * orbit path in real time, sped up by ORBIT_SPEED_MULTIPLIER. Static
+ * reference orbit lines and conjunction snapshots are left untouched.
+ */
+function updateSpacecraftPositions() {
+    const elapsed = (Date.now() - simClockStart) / 1000 * ORBIT_SPEED_MULTIPLIER;
+
+    spacecraftMeshes.forEach(sprite => {
+        const orbitPoints = sprite.userData.orbitPoints;
+        const periodSec = sprite.userData.periodSec;
+        if (!orbitPoints || !periodSec) return;
+
+        const fraction = (elapsed % periodSec) / periodSec;
+        const idx = fraction * (orbitPoints.length - 1);
+        const idxFloor = Math.floor(idx);
+        const idxCeil = Math.ceil(idx);
+        const t = idx - idxFloor;
+
+        const interpolated = orbitPoints[idxFloor].clone()
+            .lerp(orbitPoints[idxCeil], t);
+
+        sprite.position.copy(interpolated);
+        if (sprite.userData.glowMesh) {
+            sprite.userData.glowMesh.position.copy(interpolated);
+        }
+    });
 }
 
 // ============================================================================
@@ -686,14 +777,40 @@ function createAltitudeShells() {
 // DASHBOARD UI POPULATION
 // ============================================================================
 
+/**
+ * Animate a numeric element's textContent from 0 up to targetValue using
+ * an ease-out cubic curve (same easing style as animateCamera).
+ */
+function animateCountUp(element, targetValue, opts) {
+    if (!element) return;
+    opts = opts || {};
+    const duration = opts.duration || 1200;
+    const decimals = opts.decimals || 0;
+    const prefix = opts.prefix || '';
+    const suffix = opts.suffix || '';
+    const startTime = Date.now();
+
+    function step() {
+        const elapsed = Date.now() - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - t, 3); // Ease out cubic
+        const current = targetValue * eased;
+
+        element.textContent = prefix + current.toFixed(decimals) + suffix;
+
+        if (t < 1) requestAnimationFrame(step);
+    }
+    step();
+}
+
 function populateDashboard() {
     if (!simData) return;
 
     const risk = simData.risk_metrics;
 
-    // Header stats
-    document.getElementById('h-objects').textContent = risk.total_spacecraft;
-    document.getElementById('h-conjunctions').textContent = risk.total_conjunctions;
+    // Header stats (staggered count-up animation for visual cascade)
+    setTimeout(() => animateCountUp(document.getElementById('h-objects'), risk.total_spacecraft), 0);
+    setTimeout(() => animateCountUp(document.getElementById('h-conjunctions'), risk.total_conjunctions), 100);
 
     const threatLevel = risk.critical_conjunctions > 0 ? 'ELEVATED' :
                         risk.high_risk_conjunctions > 0 ? 'GUARDED' : 'NOMINAL';
@@ -704,11 +821,17 @@ function populateDashboard() {
         threatLevel === 'GUARDED' ? '' : 'success'
     );
 
-    // Risk metrics
-    document.getElementById('m-critical').textContent = risk.critical_conjunctions;
-    document.getElementById('m-high').textContent = risk.high_risk_conjunctions;
-    document.getElementById('m-maneuvers').textContent = risk.maneuvers_planned;
-    document.getElementById('m-fuel').textContent = risk.total_fuel_cost_ms.toFixed(1);
+    // Risk metrics (staggered count-up)
+    setTimeout(() => animateCountUp(document.getElementById('m-critical'), risk.critical_conjunctions), 200);
+    setTimeout(() => animateCountUp(document.getElementById('m-high'), risk.high_risk_conjunctions), 300);
+    setTimeout(() => animateCountUp(document.getElementById('m-maneuvers'), risk.maneuvers_planned), 400);
+    setTimeout(() => animateCountUp(document.getElementById('m-fuel'), risk.total_fuel_cost_ms, { decimals: 1 }), 500);
+
+    // Toggle the critical-card pulse glow only when there are active critical conjunctions
+    const criticalCard = document.querySelector('.metric-card.critical');
+    if (criticalCard) {
+        criticalCard.classList.toggle('has-critical-risk', risk.critical_conjunctions > 0);
+    }
 
     // Constellation breakdown
     const types = { COMSAT: 0, EOS: 0, CUBE: 0, DEBRIS: 0 };
@@ -731,7 +854,7 @@ function populateDashboard() {
                          risk.high_risk_conjunctions * 0.05;
     const kesslerClamped = Math.min(kesslerValue, 1.0);
     document.getElementById('kessler-fill').style.width = (kesslerClamped * 100) + '%';
-    document.getElementById('kessler-value').textContent = kesslerClamped.toFixed(3);
+    setTimeout(() => animateCountUp(document.getElementById('kessler-value'), kesslerClamped, { decimals: 3, duration: 1500 }), 600);
 
     if (kesslerClamped > 0.7) {
         document.getElementById('kessler-fill').style.background = 'var(--gradient-danger)';
@@ -743,10 +866,12 @@ function populateDashboard() {
     // Charts
     drawRiskTimeline();
     drawAltitudeChart();
+    drawRiskEvolutionChart();
+    drawDebrisAnalysisChart();
+    updateDebrisSummary();
 
     // Clock
     updateClock();
-    setInterval(updateClock, 1000);
 }
 
 function populateConjunctionList() {
@@ -932,6 +1057,412 @@ function drawAltitudeChart() {
 }
 
 // ============================================================================
+// DYNAMIC CHART: RISK EVOLUTION (multi-year projection, replaces risk_evolution.png)
+// ============================================================================
+
+const EVO_METRIC_CONFIG = {
+    pc: {
+        key: 'total_collision_probability',
+        label: 'Collision Probability',
+        color: '#ff2d55',
+        log: true,
+        fill: true,
+    },
+    debris: {
+        key: 'total_expected_debris',
+        label: 'Expected Debris Fragments',
+        color: '#00d4ff',
+        log: false,
+        fill: true,
+    },
+    kessler: {
+        key: 'kessler_risk_index',
+        label: 'Kessler Syndrome Index',
+        color: '#7b2ff7',
+        log: false,
+        fill: true,
+        fixedMax: 1.0,
+        threshold: 0.5,
+    },
+    fuel: {
+        key: 'fuel_consumed_total_ms',
+        label: 'Fuel Consumed [m/s]',
+        color: '#30d158',
+        log: false,
+        fill: true,
+    },
+};
+
+function drawRiskEvolutionChart() {
+    const canvas = document.getElementById('risk-evolution-chart');
+    const data = simData && simData.risk_evolution;
+    if (!canvas || !data || data.length === 0) return;
+
+    const cfg = EVO_METRIC_CONFIG[chartState.evoMetric] || EVO_METRIC_CONFIG.pc;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const padding = { top: 10, right: 10, bottom: 20, left: 40 };
+
+    ctx.clearRect(0, 0, w, h);
+
+    const values = data.map(d => Math.max(d[cfg.key], cfg.log ? 1e-12 : 0));
+    let maxVal = cfg.fixedMax !== undefined ? cfg.fixedMax : Math.max(...values) * 1.1;
+    if (maxVal <= 0) maxVal = 1;
+    const minVal = cfg.log ? Math.min(...values) : 0;
+
+    const plotW = w - padding.left - padding.right;
+    const plotH = h - padding.top - padding.bottom;
+
+    const yFor = (v) => {
+        if (cfg.log) {
+            const logMax = Math.log10(maxVal);
+            const logMin = Math.log10(Math.max(minVal, maxVal * 1e-8));
+            const t = (Math.log10(Math.max(v, 1e-12)) - logMin) / Math.max(logMax - logMin, 1e-9);
+            return padding.top + plotH - Math.max(0, Math.min(1, t)) * plotH;
+        }
+        return padding.top + plotH - (v / maxVal) * plotH;
+    };
+
+    // Grid lines
+    ctx.strokeStyle = '#1e2a42';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (plotH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(w - padding.right, y);
+        ctx.stroke();
+    }
+
+    // Threshold line (e.g. Kessler critical)
+    if (cfg.threshold !== undefined) {
+        const ty = yFor(cfg.threshold);
+        ctx.strokeStyle = 'rgba(255, 45, 85, 0.5)';
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(padding.left, ty);
+        ctx.lineTo(w - padding.right, ty);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Fill area
+    if (cfg.fill) {
+        const gradient = ctx.createLinearGradient(0, padding.top, 0, h - padding.bottom);
+        gradient.addColorStop(0, hexToRgba(cfg.color, 0.3));
+        gradient.addColorStop(1, hexToRgba(cfg.color, 0.0));
+
+        ctx.beginPath();
+        ctx.moveTo(padding.left, h - padding.bottom);
+        data.forEach((d, i) => {
+            const x = padding.left + (i / (data.length - 1)) * plotW;
+            const y = yFor(d[cfg.key]);
+            ctx.lineTo(x, y);
+        });
+        ctx.lineTo(padding.left + plotW, h - padding.bottom);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+    }
+
+    // Line
+    ctx.beginPath();
+    data.forEach((d, i) => {
+        const x = padding.left + (i / (data.length - 1)) * plotW;
+        const y = yFor(d[cfg.key]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Axis labels
+    const years = data[data.length - 1].year;
+    ctx.fillStyle = '#5a6b8a';
+    ctx.font = '9px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('0y', padding.left, h - 4);
+    ctx.fillText(`${(years / 2).toFixed(0)}y`, padding.left + plotW / 2, h - 4);
+    ctx.fillText(`${years.toFixed(0)}y`, padding.left + plotW, h - 4);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(cfg.log ? maxVal.toExponential(0) : maxVal.toFixed(cfg.fixedMax ? 1 : 0),
+                 padding.left - 4, padding.top + 8);
+    ctx.fillText('0', padding.left - 4, h - padding.bottom);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = cfg.color;
+    ctx.font = '9px Inter';
+    ctx.fillText(cfg.label, padding.left, padding.top + 2);
+}
+
+function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// ============================================================================
+// DYNAMIC CHART: DEBRIS ANALYSIS (replaces debris_analysis.png)
+// ============================================================================
+
+function updateDebrisSummary() {
+    const el = document.getElementById('debris-summary');
+    const d = simData && simData.debris_analysis;
+    if (!el) return;
+
+    if (!d) {
+        el.textContent = 'No high-risk conjunction available for debris analysis.';
+        return;
+    }
+
+    const typeSpan = d.is_catastrophic
+        ? '<span class="catastrophic">CATASTROPHIC</span>'
+        : '<span class="non-catastrophic">Non-catastrophic</span>';
+
+    el.innerHTML = `
+        ${d.object1} &harr; ${d.object2}<br>
+        Type: ${typeSpan}<br>
+        Fragments &gt;10cm: ${d.total_fragments_gt_10cm} &middot; &gt;1cm: ${d.total_fragments_gt_1cm}<br>
+        Debris mass: ${d.debris_mass_kg.toFixed(0)} kg &middot; Mean lifetime: ${d.mean_debris_lifetime_years.toFixed(1)}y<br>
+        Cascade risk: ${d.risk_to_other_spacecraft.toExponential(2)}
+    `;
+}
+
+function drawDebrisAnalysisChart() {
+    const canvas = document.getElementById('debris-analysis-chart');
+    const d = simData && simData.debris_analysis;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    if (!d) {
+        ctx.fillStyle = '#5a6b8a';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText('No debris data available', w / 2, h / 2);
+        return;
+    }
+
+    const metric = chartState.debrisMetric;
+    let values, color, xLabel;
+    if (metric === 'size') {
+        values = d.fragment_sizes;
+        color = '#00d4ff';
+        xLabel = 'Fragment Size [m]';
+    } else if (metric === 'altitude') {
+        values = d.perigees_km.concat(d.apogees_km);
+        color = '#ff9500';
+        xLabel = 'Altitude [km]';
+    } else {
+        values = d.lifetimes_years;
+        color = '#ffcc00';
+        xLabel = 'Lifetime [years]';
+    }
+
+    if (!values || values.length === 0) {
+        ctx.fillStyle = '#5a6b8a';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText('No fragment data for this metric', w / 2, h / 2);
+        return;
+    }
+
+    const padding = { top: 14, right: 10, bottom: 20, left: 30 };
+    const plotW = w - padding.left - padding.right;
+    const plotH = h - padding.top - padding.bottom;
+
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const bins = 16;
+    const binWidth = Math.max(maxV - minV, 1e-9) / bins;
+    const histogram = new Array(bins).fill(0);
+    values.forEach(v => {
+        const bin = Math.min(Math.floor((v - minV) / binWidth), bins - 1);
+        histogram[Math.max(bin, 0)]++;
+    });
+
+    const maxCount = Math.max(...histogram);
+    const barWidth = plotW / bins - 2;
+
+    histogram.forEach((count, i) => {
+        const x = padding.left + (i / bins) * plotW + 1;
+        const barH = (count / maxCount) * plotH;
+        const y = padding.top + plotH - barH;
+        ctx.fillStyle = hexToRgba(color, 0.75);
+        ctx.fillRect(x, y, barWidth, barH);
+    });
+
+    ctx.fillStyle = '#5a6b8a';
+    ctx.font = '9px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText(minV.toFixed(minV < 1 ? 2 : 0), padding.left, h - 4);
+    ctx.fillText(maxV.toFixed(maxV < 1 ? 2 : 0), padding.left + plotW, h - 4);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = color;
+    ctx.font = '9px Inter';
+    ctx.fillText(xLabel, padding.left, padding.top - 4);
+}
+
+// ============================================================================
+// CHART TAB CONTROLS (risk evolution + debris analysis)
+// ============================================================================
+
+function initChartTabs() {
+    document.querySelectorAll('.chart-tab[data-evo]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.chart-tab[data-evo]').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            chartState.evoMetric = e.currentTarget.dataset.evo;
+            drawRiskEvolutionChart();
+        });
+    });
+
+    document.querySelectorAll('.chart-tab[data-debris]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.chart-tab[data-debris]').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            chartState.debrisMetric = e.currentTarget.dataset.debris;
+            drawDebrisAnalysisChart();
+        });
+    });
+}
+
+// ============================================================================
+// FULL SIMULATION RUN (regenerates all data + charts + 3D scene)
+// ============================================================================
+
+function initFullSimulationControl() {
+    const btn = document.getElementById('fullsim-run-btn');
+    if (!btn) return;
+    btn.addEventListener('click', runFullSimulation);
+}
+
+async function runFullSimulation() {
+    const btn = document.getElementById('fullsim-run-btn');
+    const status = document.getElementById('fullsim-status');
+    if (!btn || !status) return;
+
+    btn.disabled = true;
+    status.textContent = 'RUNNING (~30-60s)...';
+    status.className = 'sim-status-badge running';
+
+    try {
+        const res = await fetch('/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ seed: Date.now() % 100000 }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `Request failed (${res.status})`);
+        }
+
+        // Fetch the fresh dataset and rebuild everything
+        const allRes = await fetch('/api/all');
+        simData = await allRes.json();
+
+        rebuildScene();
+        populateDashboard();
+
+        status.textContent = 'COMPLETE';
+        status.className = 'sim-status-badge complete';
+    } catch (err) {
+        console.error('Full simulation run failed:', err);
+        status.textContent = 'ERROR';
+        status.className = 'sim-status-badge error';
+    } finally {
+        btn.disabled = false;
+        setTimeout(() => {
+            if (status.textContent !== 'RUNNING...') {
+                status.textContent = 'IDLE';
+                status.className = 'sim-status-badge idle';
+            }
+        }, 2500);
+    }
+}
+
+/**
+ * Tear down and rebuild the parts of the 3D scene that depend on
+ * simData (orbits, spacecraft, conjunctions, debris, altitude shells),
+ * so a fresh simulation run is reflected in the viewport without a
+ * full page reload.
+ */
+function rebuildScene() {
+    ['orbits', 'spacecraft', 'conjunctions', 'shells'].forEach(name => {
+        const group = scene.getObjectByName(name);
+        if (group) scene.remove(group);
+    });
+    if (debrisParticles) {
+        scene.remove(debrisParticles);
+        debrisParticles = null;
+    }
+
+    orbitLines = [];
+    spacecraftMeshes = [];
+    conjunctionLines = [];
+    shellMeshes = [];
+
+    createOrbits();
+    createSpacecraft();
+    createConjunctions();
+    createDebris();
+    createAltitudeShells();
+
+    // Re-apply current visibility toggles
+    const orbitsGroup = scene.getObjectByName('orbits');
+    if (orbitsGroup) orbitsGroup.visible = vizState.showOrbits;
+    const scGroup = scene.getObjectByName('spacecraft');
+    if (scGroup) scGroup.visible = vizState.showSpacecraft;
+    const conjGroup = scene.getObjectByName('conjunctions');
+    if (conjGroup) conjGroup.visible = vizState.showConjunctions;
+    const shellGroup = scene.getObjectByName('shells');
+    if (shellGroup) shellGroup.visible = vizState.showShells;
+    if (debrisParticles) debrisParticles.visible = vizState.showDebris;
+}
+
+// ============================================================================
+// ORBITS 3D MODAL (matplotlib plot viewer)
+// ============================================================================
+
+function initOrbits3dModal() {
+    const btn = document.getElementById('btn-view-orbits3d');
+    const modal = document.getElementById('orbits3d-modal');
+    const closeBtn = document.getElementById('orbits3d-close');
+    const img = document.getElementById('orbits3d-img');
+    const emptyMsg = document.getElementById('orbits3d-empty');
+    if (!btn || !modal) return;
+
+    btn.addEventListener('click', () => {
+        // Cache-bust so the latest regenerated PNG is always shown
+        img.classList.remove('hidden');
+        emptyMsg.classList.add('hidden');
+        img.onerror = () => {
+            img.classList.add('hidden');
+            emptyMsg.classList.remove('hidden');
+        };
+        img.src = `/orbits_3d.png?t=${Date.now()}`;
+        modal.classList.remove('hidden');
+    });
+
+    const close = () => modal.classList.add('hidden');
+    closeBtn.addEventListener('click', close);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) close();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
+    });
+}
+
+// ============================================================================
 // CONTROLS
 // ============================================================================
 
@@ -1114,6 +1645,12 @@ function animate() {
         });
     }
 
+    // Move constellation spacecraft along their real orbit paths
+    if (spacecraftMeshes.length > 0) updateSpacecraftPositions();
+
+    // Rotate the radar sweep wedge
+    if (radarSweep) radarSweep.rotation.y += 0.008;
+
     // Animate debris particles
     if (debrisParticles && debrisParticles.visible) {
         const positions = debrisParticles.geometry.attributes.position.array;
@@ -1193,6 +1730,7 @@ const simPlayer = {
     velocityArrow2: null,
     tcaMarker: null,
     tcaPulseInterval: null,
+    ambientDebris: [],
 
     // State
     currentFrame: 0,
@@ -1253,6 +1791,9 @@ function startSimulation() {
     document.getElementById('sim-event-log').innerHTML = '';
     document.getElementById('sim-progress-fill').style.width = '0%';
 
+    // Reset the left-sidebar live telemetry chart for the new run
+    resetTelemetryPanel();
+
     // Clear previous sim objects
     clearSimObjects();
     createSimObjects();
@@ -1270,6 +1811,9 @@ function startSimulation() {
             document.getElementById('sim-status').textContent = 'LIVE';
             document.getElementById('sim-status').className = 'sim-status-badge live';
             document.getElementById('sim-scenario-name').textContent = scenario.name;
+
+            teleState.scenario = scenario;
+            setTelemetryBadge('live', 'LIVE');
 
             addEventLogEntry('info', `Scenario: ${scenario.name}`);
             addEventLogEntry('info', `Alt: ${scenario.metadata.altitude_km} km | V_rel: ${scenario.metadata.relative_velocity_kms} km/s`);
@@ -1318,6 +1862,7 @@ function playScenarioFrames(scenario) {
             document.getElementById('sim-status').className = 'sim-status-badge complete';
             document.getElementById('sim-play-btn').disabled = false;
             simPlayer.active = false;
+            setTelemetryBadge('complete', 'COMPLETE');
             return;
         }
 
@@ -1346,6 +1891,9 @@ function playScenarioFrames(scenario) {
 
         // Update the in-viewport telemetry HUD
         updateSimHud(scenario, frame, dist);
+
+        // Feed the left-sidebar live telemetry chart
+        recordTelemetrySample(scenario, frame, dist);
 
         // Fire events at their scheduled frames
         while (eventIdx < scenario.events.length && scenario.events[eventIdx].frame <= frame) {
@@ -1379,6 +1927,8 @@ function stopSimulation() {
     document.getElementById('sim-play-btn').disabled = false;
     document.getElementById('sim-stop-btn').disabled = true;
 
+    setTelemetryBadge('idle', 'IDLE');
+
     // Hide the telemetry HUD
     const hud = document.getElementById('sim-hud');
     if (hud) hud.classList.add('hidden');
@@ -1386,51 +1936,334 @@ function stopSimulation() {
     clearSimObjects();
 }
 
-function createSimObjects() {
-    simPlayer.simGroup = new THREE.Group();
-    simPlayer.simGroup.name = 'simulation';
+// ============================================================================
+// LIVE TELEMETRY CHART (left sidebar) - populates dynamically as a
+// collision scenario plays back, plotting range-to-target over time
+// with event markers overlaid.
+// ============================================================================
 
-    // Object 1 (maneuverable spacecraft) - bright cyan sphere
-    const geo1 = new THREE.SphereGeometry(0.035, 16, 16);
-    const mat1 = new THREE.MeshBasicMaterial({
-        color: 0x00d4ff,
-        transparent: true,
-        opacity: 1.0
+function setTelemetryBadge(cls, text) {
+    const badge = document.getElementById('telemetry-badge');
+    if (!badge) return;
+    badge.className = 'sim-status-badge ' + cls;
+    badge.textContent = text;
+}
+
+function resetTelemetryPanel() {
+    teleState.scenario = null;
+    teleState.history = [];
+    teleState.prevDist = undefined;
+    setTelemetryBadge('idle', 'IDLE');
+    const hint = document.getElementById('telemetry-hint');
+    if (hint) hint.classList.remove('hidden');
+    ['tel-range', 'tel-vel', 'tel-proximity'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = '--'; el.className = 'telemetry-value'; }
     });
-    simPlayer.obj1Mesh = new THREE.Mesh(geo1, mat1);
-    simPlayer.simGroup.add(simPlayer.obj1Mesh);
+    const eqDistEl = document.getElementById('physics-eq-dist');
+    const eqVelEl = document.getElementById('physics-eq-vel');
+    if (eqDistEl) eqDistEl.textContent = '= -- km';
+    if (eqVelEl) eqVelEl.textContent = '= -- km/s';
+    drawTelemetryChart();
+}
 
-    // Object 1 glow
-    const glow1Geo = new THREE.SphereGeometry(0.06, 12, 12);
-    const glow1Mat = new THREE.MeshBasicMaterial({
-        color: 0x00d4ff,
+function recordTelemetrySample(scenario, frame, dist) {
+    const hint = document.getElementById('telemetry-hint');
+    if (hint) hint.classList.add('hidden');
+
+    const t = frame * 0.05 / Math.max(simPlayer.speed, 0.001);
+    const closingKms = teleState.prevDist !== undefined
+        ? (teleState.prevDist - dist) / 0.05 : 0;
+    teleState.prevDist = dist;
+
+    teleState.history.push({ frame, t, dist, closingVel: closingKms });
+    // Cap history so the chart stays responsive on long runs
+    if (teleState.history.length > scenario.n_frames + 5) teleState.history.shift();
+
+    // Live readouts
+    const rangeEl = document.getElementById('tel-range');
+    const velEl = document.getElementById('tel-vel');
+    const proxEl = document.getElementById('tel-proximity');
+
+    if (rangeEl) rangeEl.textContent = dist.toFixed(1) + ' km';
+    if (velEl) velEl.textContent = Math.abs(closingKms).toFixed(2) + ' km/s ' + (closingKms >= 0 ? '\u2193' : '\u2191');
+
+    // Live-evaluated physics equations: d(t) = |r1(t) - r2(t)|, v_rel = -Δd/Δt
+    const eqDistEl = document.getElementById('physics-eq-dist');
+    const eqVelEl = document.getElementById('physics-eq-vel');
+    if (eqDistEl) eqDistEl.textContent = `= ${dist.toFixed(2)} km`;
+    if (eqVelEl) eqVelEl.textContent = `= ${closingKms.toFixed(2)} km/s`;
+
+    let proxLabel, proxClass;
+    if (dist > 500) { proxLabel = 'SAFE'; proxClass = 'success'; }
+    else if (dist > 100) { proxLabel = 'GUARDED'; proxClass = ''; }
+    else if (dist > 10) { proxLabel = 'ELEVATED'; proxClass = 'warning'; }
+    else { proxLabel = 'CRITICAL'; proxClass = 'warning critical-text'; }
+    if (proxEl) proxEl.textContent = proxLabel;
+    if (proxEl) proxEl.className = 'telemetry-value ' + proxClass;
+
+    drawTelemetryChart();
+}
+
+function drawTelemetryChart() {
+    const canvas = document.getElementById('telemetry-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const padding = { top: 10, right: 8, bottom: 18, left: 38 };
+
+    ctx.clearRect(0, 0, w, h);
+
+    const scenario = teleState.scenario;
+    const history = teleState.history;
+
+    if (!scenario || history.length < 2) {
+        // Empty state: draw a faint baseline grid so the panel doesn't look broken
+        ctx.strokeStyle = '#1e2a42';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= 3; i++) {
+            const y = padding.top + ((h - padding.top - padding.bottom) / 3) * i;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(w - padding.right, y);
+            ctx.stroke();
+        }
+        return;
+    }
+
+    const plotW = w - padding.left - padding.right;
+    const plotH = h - padding.top - padding.bottom;
+
+    // X domain spans the full scenario duration so the line grows left-to-right
+    // as playback progresses, rather than rescaling every frame.
+    const tMax = Math.max(scenario.n_frames * 0.05 / Math.max(simPlayer.speed, 0.001), history[history.length - 1].t);
+    const distMax = Math.max(...history.map(d => d.dist), scenario.min_distance_km || 0) * 1.15 || 1;
+
+    const xFor = (t) => padding.left + (t / tMax) * plotW;
+    const yFor = (d) => padding.top + plotH - (d / distMax) * plotH;
+
+    // Grid lines
+    ctx.strokeStyle = '#1e2a42';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 3; i++) {
+        const y = padding.top + (plotH / 3) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(w - padding.right, y);
+        ctx.stroke();
+    }
+
+    // Danger threshold band (< 10km considered critical proximity)
+    const dangerY = yFor(Math.min(10, distMax));
+    ctx.fillStyle = 'rgba(255, 45, 85, 0.08)';
+    ctx.fillRect(padding.left, dangerY, plotW, padding.top + plotH - dangerY);
+
+    // Gradient fill under the range curve
+    const gradient = ctx.createLinearGradient(0, padding.top, 0, h - padding.bottom);
+    gradient.addColorStop(0, 'rgba(0, 212, 255, 0.25)');
+    gradient.addColorStop(1, 'rgba(0, 212, 255, 0.0)');
+
+    ctx.beginPath();
+    ctx.moveTo(xFor(history[0].t), h - padding.bottom);
+    history.forEach(d => ctx.lineTo(xFor(d.t), yFor(d.dist)));
+    ctx.lineTo(xFor(history[history.length - 1].t), h - padding.bottom);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Range line, colored by current proximity risk
+    ctx.beginPath();
+    history.forEach((d, i) => {
+        const x = xFor(d.t);
+        const y = yFor(d.dist);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    const lastDist = history[history.length - 1].dist;
+    const lineColor = lastDist > 500 ? '#30d158' : lastDist > 100 ? '#ffcc00' : lastDist > 10 ? '#ff9500' : '#ff2d55';
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Current position marker (pulsing dot at the leading edge)
+    const lastPt = history[history.length - 1];
+    ctx.beginPath();
+    ctx.arc(xFor(lastPt.t), yFor(lastPt.dist), 3, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+
+    // Event markers (vertical ticks) for any events already fired
+    if (scenario.events) {
+        scenario.events.forEach(evt => {
+            const evtT = evt.frame * 0.05 / Math.max(simPlayer.speed, 0.001);
+            if (evtT > lastPt.t) return; // hasn't happened yet
+            const x = xFor(evtT);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + plotH);
+            ctx.stroke();
+        });
+    }
+
+    // Axis labels
+    ctx.fillStyle = '#5a6b8a';
+    ctx.font = '9px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('0s', padding.left, h - 4);
+    ctx.fillText(`${tMax.toFixed(1)}s`, padding.left + plotW, h - 4);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(distMax.toFixed(0), padding.left - 4, padding.top + 8);
+    ctx.fillText('0', padding.left - 4, h - padding.bottom);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#8b9cc0';
+    ctx.font = '9px Inter';
+    ctx.fillText('Range (km)', padding.left, padding.top + 2);
+}
+
+// ============================================================================
+// PROCEDURAL SATELLITE / DEBRIS MODELS
+// ============================================================================
+
+function createSatelliteModel(color) {
+    const group = new THREE.Group();
+
+    // Central bus (body)
+    const busGeo = new THREE.BoxGeometry(0.018, 0.018, 0.032);
+    const busMat = new THREE.MeshStandardMaterial({
+        color: 0xcccccc,
+        metalness: 0.6,
+        roughness: 0.4,
+        emissive: color,
+        emissiveIntensity: 0.15
+    });
+    const bus = new THREE.Mesh(busGeo, busMat);
+    group.add(bus);
+
+    // Solar panel wings (two, extending from either side of the bus)
+    const panelGeo = new THREE.BoxGeometry(0.05, 0.002, 0.022);
+    const panelMatL = new THREE.MeshStandardMaterial({
+        color: 0x0a1a3a,
+        metalness: 0.3,
+        roughness: 0.6,
+        emissive: color,
+        emissiveIntensity: 0.08
+    });
+    const panelLeft = new THREE.Mesh(panelGeo, panelMatL);
+    panelLeft.position.x = -0.043;
+    group.add(panelLeft);
+
+    const panelMatR = panelMatL.clone();
+    const panelRight = new THREE.Mesh(panelGeo, panelMatR);
+    panelRight.position.x = 0.043;
+    group.add(panelRight);
+
+    // Antenna dish
+    const dishGeo = new THREE.ConeGeometry(0.008, 0.016, 8);
+    const dishMat = new THREE.MeshStandardMaterial({
+        color: 0xeeeeee,
+        metalness: 0.7,
+        roughness: 0.3
+    });
+    const dish = new THREE.Mesh(dishGeo, dishMat);
+    dish.position.z = 0.02;
+    dish.rotation.x = Math.PI / 2;
+    group.add(dish);
+
+    // Blinking anti-collision beacon
+    const beaconGeo = new THREE.SphereGeometry(0.004, 8, 8);
+    const beaconMat = new THREE.MeshBasicMaterial({
+        color: 0xff2d55,
+        transparent: true,
+        opacity: 1
+    });
+    const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+    beacon.position.set(0, 0.011, -0.014);
+    group.add(beacon);
+    group.userData.beacon = beacon;
+
+    // Glow sphere (kept for burn-effect color swap compatibility)
+    const glowGeo = new THREE.SphereGeometry(0.06, 12, 12);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: color,
         transparent: true,
         opacity: 0.35,
         blending: THREE.AdditiveBlending
     });
-    const glow1 = new THREE.Mesh(glow1Geo, glow1Mat);
-    simPlayer.obj1Mesh.add(glow1);
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    group.add(glow);
+    group.userData.glow = glow;
 
-    // Object 2 (debris/target) - red-orange sphere
-    const geo2 = new THREE.SphereGeometry(0.03, 16, 16);
-    const mat2 = new THREE.MeshBasicMaterial({
-        color: 0xff4444,
-        transparent: true,
-        opacity: 1.0
+    return group;
+}
+
+function createDebrisModel(color) {
+    const group = new THREE.Group();
+
+    // Irregular rock shape via jittered icosahedron vertices
+    const geo = new THREE.IcosahedronGeometry(0.028, 1);
+    const posAttr = geo.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+        const jitter = 0.35;
+        posAttr.setXYZ(
+            i,
+            posAttr.getX(i) * (1 + (Math.random() - 0.5) * jitter),
+            posAttr.getY(i) * (1 + (Math.random() - 0.5) * jitter),
+            posAttr.getZ(i) * (1 + (Math.random() - 0.5) * jitter)
+        );
+    }
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+        color: 0x8b8378,
+        metalness: 0.5,
+        roughness: 0.8,
+        emissive: color,
+        emissiveIntensity: 0.12
     });
-    simPlayer.obj2Mesh = new THREE.Mesh(geo2, mat2);
-    simPlayer.simGroup.add(simPlayer.obj2Mesh);
+    const rock = new THREE.Mesh(geo, mat);
+    group.add(rock);
 
-    // Object 2 glow
-    const glow2Geo = new THREE.SphereGeometry(0.05, 12, 12);
-    const glow2Mat = new THREE.MeshBasicMaterial({
-        color: 0xff4444,
+    // Jagged wireframe overlay for a damaged-metal look
+    const wireGeo = new THREE.EdgesGeometry(geo);
+    const wireMat = new THREE.LineBasicMaterial({
+        color: color,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.3
+    });
+    const wire = new THREE.LineSegments(wireGeo, wireMat);
+    group.add(wire);
+
+    // Glow (kept for consistency with satellite model's glow reference pattern)
+    const glowGeo = new THREE.SphereGeometry(0.045, 12, 12);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.25,
         blending: THREE.AdditiveBlending
     });
-    const glow2 = new THREE.Mesh(glow2Geo, glow2Mat);
-    simPlayer.obj2Mesh.add(glow2);
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    group.add(glow);
+    group.userData.glow = glow;
+
+    return group;
+}
+
+function createSimObjects() {
+    simPlayer.simGroup = new THREE.Group();
+    simPlayer.simGroup.name = 'simulation';
+
+    // Object 1 (maneuverable spacecraft) - detailed satellite model
+    simPlayer.obj1Mesh = createSatelliteModel(0x00d4ff);
+    simPlayer.simGroup.add(simPlayer.obj1Mesh);
+
+    // Object 2 (debris/target) - tumbling irregular rock chunk
+    simPlayer.obj2Mesh = createDebrisModel(0xff4444);
+    simPlayer.simGroup.add(simPlayer.obj2Mesh);
 
     // Distance line between objects (pre-allocate buffer for in-place updates)
     const lineGeo = new THREE.BufferGeometry();
@@ -1474,6 +2307,31 @@ function createSimObjects() {
     );
     simPlayer.simGroup.add(simPlayer.velocityArrow1);
     simPlayer.simGroup.add(simPlayer.velocityArrow2);
+
+    // A handful of extra ambient debris tumbling in the background,
+    // giving the scene a cluttered, realistic orbital-environment feel
+    simPlayer.ambientDebris = [];
+    const ambientColors = [0xff4444, 0x8b8378, 0xffaa00, 0x8b8378, 0xff6644];
+    for (let i = 0; i < 5; i++) {
+        const debrisMesh = createDebrisModel(ambientColors[i % ambientColors.length]);
+        debrisMesh.scale.setScalar(0.3 + Math.random() * 0.4); // smaller than the main debris object
+        simPlayer.simGroup.add(debrisMesh);
+
+        simPlayer.ambientDebris.push({
+            mesh: debrisMesh,
+            orbitRadius: 0.12 + Math.random() * 0.18,
+            orbitSpeed: (0.3 + Math.random() * 0.5) * (Math.random() < 0.5 ? 1 : -1),
+            orbitPhase: Math.random() * Math.PI * 2,
+            orbitAxis: new THREE.Vector3(
+                Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5
+            ).normalize(),
+            spinSpeed: {
+                x: (Math.random() - 0.5) * 0.03,
+                y: (Math.random() - 0.5) * 0.03,
+                z: (Math.random() - 0.5) * 0.03,
+            },
+        });
+    }
 
     scene.add(simPlayer.simGroup);
 }
@@ -1561,6 +2419,7 @@ function clearSimObjects() {
     simPlayer.velocityArrow1 = null;
     simPlayer.velocityArrow2 = null;
     simPlayer.tcaMarker = null;
+    simPlayer.ambientDebris = [];
     simPlayer.trailPoints1 = [];
     simPlayer.trailPoints2 = [];
     simPlayer.prevPos1 = null;
@@ -1639,6 +2498,15 @@ function drawPathPreview(scenario) {
 
     // TCA ring marker (pulsing)
     const tcaPos = toVec3(scenario.path_object1[scenario.tca_frame]);
+
+    // Scatter the ambient debris pieces around the TCA point so they
+    // read as background clutter near the danger zone
+    if (simPlayer.ambientDebris && simPlayer.ambientDebris.length > 0) {
+        simPlayer.ambientDebris.forEach(d => {
+            d.orbitCenter = tcaPos.clone();
+        });
+    }
+
     const tcaGeo = new THREE.RingGeometry(0.022, 0.03, 32);
     const tcaMat = new THREE.MeshBasicMaterial({
         color: 0xff9500,
@@ -1697,6 +2565,47 @@ function updateSimFrame(data) {
     // Update spacecraft positions
     simPlayer.obj1Mesh.position.copy(pos1);
     simPlayer.obj2Mesh.position.copy(pos2);
+
+    // Slow self-rotation for the satellite model (character animation)
+    simPlayer.obj1Mesh.rotation.y += 0.01;
+
+    // Chaotic tumbling for the debris model
+    simPlayer.obj2Mesh.rotation.x += 0.018;
+    simPlayer.obj2Mesh.rotation.y += 0.011;
+    simPlayer.obj2Mesh.rotation.z += 0.006;
+
+    // Animate the ambient background debris: each orbits around the TCA
+    // point (or origin as a fallback) on its own tilted circular path,
+    // plus continuous chaotic tumbling
+    if (simPlayer.ambientDebris && simPlayer.ambientDebris.length > 0) {
+        const nowSec = Date.now() / 1000;
+        simPlayer.ambientDebris.forEach(d => {
+            const center = d.orbitCenter || new THREE.Vector3(0, 0, 0);
+            const angle = d.orbitPhase + nowSec * d.orbitSpeed;
+
+            // Circular path in a plane perpendicular to orbitAxis, via
+            // two vectors spanning that plane
+            const arbitrary = Math.abs(d.orbitAxis.x) < 0.9
+                ? new THREE.Vector3(1, 0, 0)
+                : new THREE.Vector3(0, 1, 0);
+            const u = new THREE.Vector3().crossVectors(d.orbitAxis, arbitrary).normalize();
+            const v = new THREE.Vector3().crossVectors(d.orbitAxis, u).normalize();
+
+            const offset = u.clone().multiplyScalar(Math.cos(angle) * d.orbitRadius)
+                .add(v.clone().multiplyScalar(Math.sin(angle) * d.orbitRadius));
+
+            d.mesh.position.copy(center).add(offset);
+            d.mesh.rotation.x += d.spinSpeed.x;
+            d.mesh.rotation.y += d.spinSpeed.y;
+            d.mesh.rotation.z += d.spinSpeed.z;
+        });
+    }
+
+    // Blink the satellite's anti-collision beacon
+    if (simPlayer.obj1Mesh.userData.beacon) {
+        const blinkOn = Math.sin(vizState.animationTime * 8) > 0.6;
+        simPlayer.obj1Mesh.userData.beacon.material.opacity = blinkOn ? 1 : 0.15;
+    }
 
     // Update floating labels (positioned slightly above each mesh)
     if (simPlayer.label1) {
@@ -1806,8 +2715,20 @@ function handleSimEvent(evt) {
 
     // Visual effects based on event type
     switch (type) {
+        case 'radar_contact':
+            addEventLogEntry('info', message);
+            break;
+
         case 'detection':
             addEventLogEntry('warning', message);
+            break;
+
+        case 'orbit_refinement':
+            addEventLogEntry('info', message);
+            break;
+
+        case 'covariance_update':
+            addEventLogEntry('info', message);
             break;
 
         case 'risk_assessment':
@@ -1823,7 +2744,19 @@ function handleSimEvent(evt) {
             }
             break;
 
+        case 'ground_alert':
+            addEventLogEntry('warning', message);
+            break;
+
+        case 'fuel_check':
+            addEventLogEntry('info', message);
+            break;
+
         case 'maneuver_planning':
+            addEventLogEntry('info', message);
+            break;
+
+        case 'attitude_control':
             addEventLogEntry('info', message);
             break;
 
@@ -1837,8 +2770,20 @@ function handleSimEvent(evt) {
             deactivateBurnEffect();
             break;
 
+        case 'post_burn_tracking':
+            addEventLogEntry('success', message);
+            break;
+
+        case 'final_approach':
+            addEventLogEntry('warning', message);
+            break;
+
         case 'no_maneuver':
             addEventLogEntry('critical', message);
+            break;
+
+        case 'operator_response':
+            addEventLogEntry('info', message);
             break;
 
         case 'impact_imminent':
@@ -1853,16 +2798,28 @@ function handleSimEvent(evt) {
             zoomToTcaPoint();
             break;
 
+        case 'debris_field_analysis':
+            addEventLogEntry('critical', message);
+            break;
+
         case 'closest_approach':
             addEventLogEntry('success', message);
             // Cinematic tight zoom to the TCA point
             zoomToTcaPoint();
             break;
 
+        case 'secondary_screening':
+            addEventLogEntry('info', message);
+            break;
+
         case 'scenario_end':
             addEventLogEntry('info', message);
             // Pull back to the wide establishing shot
             animateCamera(new THREE.Vector3(2.5, 1.5, 3.5), new THREE.Vector3(0, 0, 0), 1500);
+            break;
+
+        case 'archival':
+            addEventLogEntry('info', message);
             break;
 
         default:
@@ -1905,9 +2862,9 @@ function activateBurnEffect() {
     simPlayer.burnEffect.scale.set(1.5, 2, 1.5);
 
     // Change object 1 glow to orange during burn
-    if (simPlayer.obj1Mesh && simPlayer.obj1Mesh.children[0]) {
-        simPlayer.obj1Mesh.children[0].material.color.setHex(0xff8800);
-        simPlayer.obj1Mesh.children[0].material.opacity = 0.6;
+    if (simPlayer.obj1Mesh && simPlayer.obj1Mesh.userData.glow) {
+        simPlayer.obj1Mesh.userData.glow.material.color.setHex(0xff8800);
+        simPlayer.obj1Mesh.userData.glow.material.opacity = 0.6;
     }
 }
 
@@ -1922,9 +2879,9 @@ function deactivateBurnEffect() {
             simPlayer.burnEffect.scale.set(1, 1, 1);
             clearInterval(fadeInterval);
             // Restore glow color
-            if (simPlayer.obj1Mesh && simPlayer.obj1Mesh.children[0]) {
-                simPlayer.obj1Mesh.children[0].material.color.setHex(0x06ffd0);
-                simPlayer.obj1Mesh.children[0].material.opacity = 0.4;
+            if (simPlayer.obj1Mesh && simPlayer.obj1Mesh.userData.glow) {
+                simPlayer.obj1Mesh.userData.glow.material.color.setHex(0x06ffd0);
+                simPlayer.obj1Mesh.userData.glow.material.opacity = 0.4;
             }
         } else {
             simPlayer.burnEffect.material.opacity = opacity;
