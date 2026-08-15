@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORBITAL SENTINEL</title>
+    <link rel="stylesheet" href="/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loading-screen">
+    <div class="loader-content">
+        <div class="orbit-loader">
+            <div class="orbit-ring ring-1"></div>
+            <div class="orbit-ring ring-2"></div>
+            <div class="orbit-ring ring-3"></div>
+            <div class="orbit-core"></div>
+        </div>
+        <h1>ORBITAL SENTINEL</h1>
+        <div class="loader-subtitle">Collision Prevention System</div>
+        <div class="loader-bar">
+            <div class="loader-progress" id="load-progress"></div>
+        </div>
+        <div class="loader-status" id="load-status">Initializing...</div>
+    </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="hidden">
+
+    <!-- Header -->
+    <header class="dash-header">
+        <div class="header-left">
+            <div class="header-title">
+                <h1>ORBITAL SENTINEL</h1>
+                <span class="header-badge">ACTIVE</span>
+            </div>
+        </div>
+        <div class="header-center">
+            <div class="header-stat">
+                <span class="stat-label">OBJECTS</span>
+                <span class="stat-value" id="h-objects">—</span>
+            </div>
+            <div class="header-stat">
+                <span class="stat-label">CONJUNCTIONS</span>
+                <span class="stat-value" id="h-conjunctions">—</span>
+            </div>
+            <div class="header-stat">
+                <span class="stat-label">THREAT LEVEL</span>
+                <span class="stat-value" id="h-threat">—</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="time-display">
+                <span id="utc-time">00:00:00</span>
+                <span class="time-label">UTC</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Content -->
+    <div class="dash-content">
+
+        <!-- Left Panel -->
+        <aside class="panel panel-left">
+            <!-- Risk Metrics -->
+            <div class="panel-section">
+                <div class="section-title"><span class="title-icon">&#9888;</span> Risk Metrics</div>
+                <div class="metrics-grid">
+                    <div class="metric-card critical">
+                        <span class="metric-icon">&#9679;</span>
+                        <div class="metric-info">
+                            <span class="metric-value" id="m-critical">0</span>
+                            <span class="metric-label">Critical</span>
+                        </div>
+                    </div>
+                    <div class="metric-card high">
+                        <span class="metric-icon">&#9679;</span>
+                        <div class="metric-info">
+                            <span class="metric-value" id="m-high">0</span>
+                            <span class="metric-label">High</span>
+                        </div>
+                    </div>
+                    <div class="metric-card medium">
+                        <span class="metric-icon">&#9679;</span>
+                        <div class="metric-info">
+                            <span class="metric-value" id="m-maneuvers">0</span>
+                            <span class="metric-label">Maneuvers</span>
+                        </div>
+                    </div>
+                    <div class="metric-card info">
+                        <span class="metric-icon">&#9679;</span>
+                        <div class="metric-info">
+                            <span class="metric-value" id="m-fuel">0</span>
+                            <span class="metric-label">&Delta;v (m/s)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conjunction List -->
+            <div class="panel-section flex-grow">
+                <div class="section-title"><span class="title-icon">&#128165;</span> Active Conjunctions</div>
+                <div class="conjunction-list" id="conjunction-list"></div>
+            </div>
+
+            <!-- Kessler Index -->
+            <div class="panel-section">
+                <div class="section-title"><span class="title-icon">&#9889;</span> Kessler Syndrome Index</div>
+                <div class="kessler-gauge">
+                    <div class="gauge-track">
+                        <div class="gauge-fill" id="kessler-fill"></div>
+                    </div>
+                    <div class="gauge-labels">
+                        <span>STABLE</span>
+                        <span>CRITICAL</span>
+                    </div>
+                    <div class="gauge-value" id="kessler-value">0.000</div>
+                </div>
+            </div>
+
+            <!-- Risk Timeline Chart -->
+            <div class="panel-section">
+                <div class="section-title"><span class="title-icon">&#128200;</span> Risk Timeline (24h)</div>
+                <canvas id="risk-chart" width="288" height="100"></canvas>
+            </div>
+        </aside>
+
+        <!-- 3D Viewport -->
+        <div class="viewport-container">
+            <div id="three-viewport"></div>
+
+            <!-- Viewport Controls -->
+            <div class="viewport-controls">
+                <div class="control-group">
+                    <button class="vp-btn active" id="btn-orbits" title="Toggle orbits">&#9711;</button>
+                    <button class="vp-btn active" id="btn-spacecraft" title="Toggle spacecraft">&#9679;</button>
+                    <button class="vp-btn active" id="btn-conjunctions" title="Toggle conjunctions">&#9888;</button>
+                    <button class="vp-btn" id="btn-debris" title="Toggle debris">&#10033;</button>
+                    <button class="vp-btn" id="btn-shells" title="Toggle shells">&#9675;</button>
+                </div>
+                <div class="control-group">
+                    <button class="vp-btn" id="btn-autorotate" title="Auto-rotate">&#8635;</button>
+                    <button class="vp-btn" id="btn-reset" title="Reset camera">&#8962;</button>
+                </div>
+            </div>
+
+            <!-- Tooltip -->
+            <div class="info-tooltip hidden" id="info-tooltip">
+                <div class="tooltip-header" id="tooltip-header"></div>
+                <div class="tooltip-body" id="tooltip-body"></div>
+            </div>
+
+            <!-- Altitude Legend -->
+            <div class="altitude-legend">
+                <div class="legend-title">Altitude</div>
+                <div class="legend-gradient"></div>
+                <div class="legend-labels"><span>400km</span><span>900km</span></div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <aside class="panel panel-right">
+            <!-- Constellation Stats -->
+            <div class="panel-section">
+                <div class="section-title"><span class="title-icon">&#128752;</span> Constellation</div>
+                <div class="constellation-stats">
+                    <div class="const-stat"><div class="const-icon comsat"></div><span class="const-label">Communication</span><span class="const-value" id="c-comsat">0</span></div>
+                    <div class="const-stat"><div class="const-icon eos"></div><span class="const-label">Earth Obs</span><span class="const-value" id="c-eos">0</span></div>
+                    <div class="const-stat"><div class="const-icon cube"></div><span class="const-label">CubeSats</span><span class="const-value" id="c-cube">0</span></div>
+                    <div class="const-stat"><div class="const-icon debris"></div><span class="const-label">Debris</span><span class="const-value" id="c-debris">0</span></div>
+                </div>
+            </div>
+
+            <!-- Altitude Distribution -->
+            <div class="panel-section">
+                <div class="section-title"><span class="title-icon">&#128200;</span> Altitude Distribution</div>
+                <canvas id="altitude-chart" width="288" height="80"></canvas>
+            </div>
+
+            <!-- Maneuvers -->
+            <div class="panel-section">
+                <div class="section-title"><span class="title-icon">&#128640;</span> Planned Maneuvers</div>
+                <div class="maneuver-list" id="maneuver-list"></div>
+            </div>
+
+            <!-- Simulation Player -->
+            <div class="panel-section sim-panel">
+                <div class="section-title">
+                    <span class="title-icon">&#9654;</span> Simulation
+                    <span class="sim-status-badge idle" id="sim-status">IDLE</span>
+                </div>
+                <div class="sim-scenario-name" id="sim-scenario-name">Select a scenario</div>
+                <div class="sim-controls">
+                    <select class="sim-select" id="scenario-select">
+                        <option value="">Loading scenarios...</option>
+                    </select>
+                    <div class="sim-buttons">
+                        <button class="sim-btn sim-btn-play" id="sim-play-btn">&#9654; PLAY</button>
+                        <button class="sim-btn sim-btn-stop" id="sim-stop-btn" disabled>&#9632; STOP</button>
+                    </div>
+                </div>
+                <div class="sim-speed-control">
+                    <span class="sim-speed-label">Speed:</span>
+                    <input type="range" class="sim-slider" id="sim-speed" min="0.1" max="5" step="0.1" value="1">
+                    <span class="sim-speed-value" id="sim-speed-val">1.0x</span>
+                </div>
+                <div class="sim-progress">
+                    <div class="sim-progress-track">
+                        <div class="sim-progress-fill" id="sim-progress-fill"></div>
+                    </div>
+                    <div class="sim-progress-info">
+                        <span>Distance: <strong id="sim-distance">—</strong></span>
+                    </div>
+                </div>
+                <div class="sim-event-log-container">
+                    <div class="sim-event-log-header">Event Log</div>
+                    <div class="sim-event-log" id="sim-event-log"></div>
+                </div>
+            </div>
+        </aside>
+
+    </div>
+</div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/controls/OrbitControls.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
