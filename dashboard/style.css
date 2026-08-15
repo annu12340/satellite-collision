@@ -1108,3 +1108,93 @@ body {
 .event-entry.event-explosion .event-icon { color: #ff4444; }
 
 .event-entry.event-info .event-icon { color: var(--text-muted); }
+
+
+/* ============================================================================
+   SIMULATION PANEL HIGHLIGHT (moved to top)
+   ============================================================================ */
+
+.sim-highlight {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.05), rgba(123, 47, 247, 0.05));
+    border: 1px solid rgba(0, 212, 255, 0.25) !important;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.25) !important;
+    border-radius: var(--radius);
+    margin: 10px;
+    position: relative;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.08), inset 0 0 30px rgba(0, 212, 255, 0.03);
+}
+
+.sim-highlight::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 20px;
+    right: 20px;
+    height: 2px;
+    background: var(--gradient-primary);
+    border-radius: 0 0 2px 2px;
+}
+
+.sim-highlight .section-title {
+    color: var(--accent-blue);
+    font-size: 0.75rem;
+}
+
+
+/* ============================================================================
+   COMPACT LEFT PANEL
+   ============================================================================ */
+
+.panel-section.compact {
+    padding: 10px 16px;
+}
+
+.panel-section.compact .section-title {
+    margin-bottom: 8px;
+}
+
+.compact .metrics-grid {
+    gap: 6px;
+}
+
+.compact .metric-card {
+    padding: 8px 10px;
+}
+
+.compact .metric-value {
+    font-size: 1rem;
+}
+
+.compact .metric-label {
+    font-size: 0.6rem;
+}
+
+.compact-stats {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px !important;
+}
+
+.compact-stats .const-stat {
+    padding: 4px 8px;
+}
+
+.compact-gauge .gauge-value {
+    font-size: 1.1rem;
+    margin-top: 4px;
+}
+
+.compact-gauge .gauge-labels {
+    font-size: 0.5rem;
+}
+
+/* Right panel: only sim + timeline, give sim more room */
+.panel-right .sim-panel {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.panel-right .sim-event-log {
+    max-height: 240px;
+}
