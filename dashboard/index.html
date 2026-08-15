@@ -200,6 +200,22 @@
             <main class="viewport-container">
                 <div id="three-viewport"></div>
 
+                <!-- Mission Telemetry HUD (shown during simulation playback) -->
+                <div id="sim-hud" class="hidden">
+                    <div class="hud-row">
+                        <span class="hud-label">DISTANCE</span>
+                        <span class="hud-value" id="hud-distance">-- km</span>
+                    </div>
+                    <div class="hud-row">
+                        <span class="hud-label">CLOSING VEL.</span>
+                        <span class="hud-value" id="hud-velocity">-- km/s</span>
+                    </div>
+                    <div class="hud-row">
+                        <span class="hud-label">TIME TO TCA</span>
+                        <span class="hud-value" id="hud-tca">--</span>
+                    </div>
+                </div>
+
                 <!-- Viewport Controls -->
                 <div class="viewport-controls">
                     <div class="control-group">

@@ -46,8 +46,11 @@ from src.simulation import (
     inject_collision_scenario
 )
 from src.conjunction import compute_risk_score, estimate_debris_count, debris_lifetime
-from src.risk_optimizer import OrbitalEnvironment, RiskGraph, InterventionOptimizer
+from src.risk_optimizer import (
+    OrbitalEnvironment, RiskGraph, InterventionOptimizer, project_risk_evolution
+)
 from src.orbital_mechanics import generate_ephemeris, propagate_state
+from src.damage_minimization import predict_collision_outcome
 
 
 app = Flask(__name__, static_folder='../dashboard', static_url_path='')
@@ -57,6 +60,7 @@ CORS(app)
 
 # Global simulation cache
 SIM_DATA = {}
+SIM_LOCK = threading.Lock()
 
 
 # ============================================================================
@@ -340,11 +344,82 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
     }
 
 
-def run_simulation():
+def build_risk_evolution(sim, years=10.0, time_steps=60):
+    """
+    Project long-term risk evolution (collision probability, debris
+    accumulation, Kessler index, fuel depletion) so the dashboard can
+    render a dynamic equivalent of risk_evolution.png.
+    """
+    states = project_risk_evolution(
+        sim.spacecraft_list, sim.conjunctions, years=years, time_steps=time_steps
+    )
+    n = max(len(states) - 1, 1)
+    timeline = []
+    for i, s in enumerate(states):
+        timeline.append({
+            'year': float(i / n * years),
+            'total_collision_probability': float(s.total_collision_probability),
+            'total_expected_debris': float(s.total_expected_debris),
+            'kessler_risk_index': float(s.kessler_risk_index),
+            'fuel_consumed_total_ms': float(s.fuel_consumed_total_ms),
+        })
+    return timeline
+
+
+def build_debris_analysis(sim, n_monte_carlo=300):
+    """
+    Run the full NASA-breakup-model collision outcome prediction for the
+    highest-risk conjunction, so the dashboard can render a dynamic
+    equivalent of debris_analysis.png.
+    """
+    if not sim.conjunctions:
+        return None
+
+    sc_dict = {sc.id: sc for sc in sim.spacecraft_list}
+    conj = max(sim.conjunctions, key=lambda c: c.probability_of_collision)
+    sc1 = sc_dict.get(conj.obj1_id)
+    sc2 = sc_dict.get(conj.obj2_id)
+    if not sc1 or not sc2:
+        return None
+
+    try:
+        outcome = predict_collision_outcome(sc1, sc2, conj, n_monte_carlo=n_monte_carlo)
+    except Exception as e:
+        print(f"  Warning: debris analysis failed: {e}")
+        return None
+
+    sizes = [float(f.size) for f in outcome.fragments]
+    perigees = [float(f.perigee_km) for f in outcome.fragments if 0 < f.perigee_km < 2000]
+    apogees = [float(f.apogee_km) for f in outcome.fragments if 0 < f.apogee_km < 2000]
+    lifetimes = [float(f.orbit_lifetime_years) for f in outcome.fragments
+                 if 0 < f.orbit_lifetime_years < 1000]
+
+    return {
+        'conjunction_id': f"{conj.obj1_id}_{conj.obj2_id}",
+        'object1': conj.obj1_id,
+        'object2': conj.obj2_id,
+        'relative_velocity_kms': float(conj.relative_velocity),
+        'is_catastrophic': bool(outcome.is_catastrophic),
+        'specific_energy_j_per_kg': float(outcome.specific_energy_j_per_kg),
+        'total_fragments_gt_10cm': int(outcome.total_fragments_gt_10cm),
+        'total_fragments_gt_1cm': int(outcome.total_fragments_gt_1cm),
+        'debris_mass_kg': float(outcome.debris_mass_kg),
+        'mean_debris_lifetime_years': float(outcome.mean_debris_lifetime_years),
+        'max_debris_altitude_km': float(outcome.max_debris_altitude_km),
+        'min_debris_altitude_km': float(outcome.min_debris_altitude_km),
+        'risk_to_other_spacecraft': float(outcome.risk_to_other_spacecraft),
+        'fragment_sizes': sizes,
+        'perigees_km': perigees,
+        'apogees_km': apogees,
+        'lifetimes_years': lifetimes,
+    }
+
+
+def run_simulation(seed=42, n_spacecraft=50):
     """Run the simulation and cache all data for the API."""
 
-    print("Running satellite collision simulation...")
-    sim = CollisionPreventionSimulation(n_spacecraft=50, seed=42)
+    print(f"Running satellite collision simulation (seed={seed})...")
+    sim = CollisionPreventionSimulation(n_spacecraft=n_spacecraft, seed=seed)
     sim.run_full_simulation()
 
     # Extract spacecraft data with orbital info
@@ -510,6 +585,13 @@ def run_simulation():
     # ========================================================================
     scenarios = generate_collision_scenarios(sim.spacecraft_list, sim.conjunctions)
 
+    # Long-term risk evolution projection (dynamic equivalent of risk_evolution.png)
+    risk_evolution = build_risk_evolution(sim)
+
+    # Full debris breakup analysis for the riskiest conjunction
+    # (dynamic equivalent of debris_analysis.png)
+    debris_analysis = build_debris_analysis(sim)
+
     SIM_DATA.clear()
     SIM_DATA.update({
         'spacecraft': spacecraft_data,
@@ -520,7 +602,10 @@ def run_simulation():
         'shells': shell_data,
         'debris': debris_data,
         'risk_timeline': risk_timeline,
+        'risk_evolution': risk_evolution,
+        'debris_analysis': debris_analysis,
         'scenarios': scenarios,
+        'run_id': int(time.time() * 1000),
     })
 
     print(f"Simulation complete. Serving dashboard...")
@@ -581,14 +666,55 @@ def get_debris():
 
 @app.route('/api/timeline')
 def get_timeline():
-    """Risk evolution timeline."""
+    """Risk evolution timeline (24h, short-term)."""
     return jsonify(SIM_DATA.get('risk_timeline', []))
+
+
+@app.route('/api/risk-evolution')
+def get_risk_evolution():
+    """Long-term (multi-year) risk evolution projection: collision probability,
+    debris accumulation, Kessler index, and fuel depletion over time.
+    Dynamic equivalent of risk_evolution.png."""
+    return jsonify(SIM_DATA.get('risk_evolution', []))
+
+
+@app.route('/api/debris-analysis')
+def get_debris_analysis():
+    """Full NASA-breakup-model debris analysis for the highest-risk
+    conjunction: fragment size/altitude/lifetime distributions and
+    collision outcome summary. Dynamic equivalent of debris_analysis.png."""
+    data = SIM_DATA.get('debris_analysis')
+    if data is None:
+        return jsonify({'error': 'No conjunction data available'}), 404
+    return jsonify(data)
 
 
 @app.route('/api/all')
 def get_all():
     """All simulation data in a single request (for initial load)."""
     return jsonify(SIM_DATA)
+
+
+@app.route('/api/run', methods=['POST'])
+def run_new_simulation():
+    """
+    Re-run the full simulation pipeline with a fresh random seed and
+    re-cache all derived data (spacecraft, conjunctions, risk evolution,
+    debris analysis, etc). Lets the dashboard "Run Simulation" button
+    regenerate all charts with new data instead of just replaying a
+    canned scenario animation.
+    """
+    if not SIM_LOCK.acquire(blocking=False):
+        return jsonify({'error': 'A simulation run is already in progress'}), 409
+    try:
+        seed = request.get_json(silent=True) or {}
+        new_seed = int(seed.get('seed', int(time.time())))
+        run_simulation(seed=new_seed)
+        return jsonify({'status': 'ok', 'run_id': SIM_DATA.get('run_id')})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        SIM_LOCK.release()
 
 
 @app.route('/api/scenario/<scenario_id>')

@@ -11,6 +11,9 @@ Ties together all modules into a runnable demonstration:
 6. Visualizes results (orbits, conjunctions, maneuvers, debris, risk evolution)
 """
 
+import matplotlib
+matplotlib.use('Agg')  # Headless backend - safe to call from Flask/background threads
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle

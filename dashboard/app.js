@@ -1065,11 +1065,11 @@ function focusOnConjunction(idx) {
     animateCamera(cameraTarget, midPos);
 }
 
-function animateCamera(targetPosition, lookAt) {
+function animateCamera(targetPosition, lookAt, duration) {
     const startPos = camera.position.clone();
     const startLookAt = controls.target.clone();
     const endLookAt = lookAt || new THREE.Vector3(0, 0, 0);
-    const duration = 1000;
+    duration = duration || 1000;
     const startTime = Date.now();
 
     function step() {
@@ -1186,6 +1186,13 @@ const simPlayer = {
     debrisCloud: null,
     distanceLine: null,
     simGroup: null,
+    pathPreviewGroup: null,
+    label1: null,
+    label2: null,
+    velocityArrow1: null,
+    velocityArrow2: null,
+    tcaMarker: null,
+    tcaPulseInterval: null,
 
     // State
     currentFrame: 0,
@@ -1194,6 +1201,9 @@ const simPlayer = {
     obj2Positions: [],
     trailPoints1: [],
     trailPoints2: [],
+    prevPos1: null,
+    prevPos2: null,
+    _prevHudDist: undefined,
 };
 
 function initSimulationPanel() {
@@ -1264,6 +1274,17 @@ function startSimulation() {
             addEventLogEntry('info', `Scenario: ${scenario.name}`);
             addEventLogEntry('info', `Alt: ${scenario.metadata.altitude_km} km | V_rel: ${scenario.metadata.relative_velocity_kms} km/s`);
 
+            // Refresh object labels now that scenario metadata is known
+            updateLabelText(simPlayer.label1, `${scenario.metadata.object1_type}-1`, '#00d4ff');
+            updateLabelText(simPlayer.label2, `${scenario.metadata.object2_type}-2`, '#ff4444');
+
+            // Draw the full precomputed trajectories immediately
+            drawPathPreview(scenario);
+
+            // Show the telemetry HUD
+            const hud = document.getElementById('sim-hud');
+            if (hud) hud.classList.remove('hidden');
+
             // Move camera to wide view
             const camPos = new THREE.Vector3(2.5, 1.5, 3.5);
             animateCamera(camPos, new THREE.Vector3(0, 0, 0));
@@ -1323,6 +1344,9 @@ function playScenarioFrames(scenario) {
         document.getElementById('sim-progress-fill').style.width = pct + '%';
         document.getElementById('sim-distance').textContent = dist.toFixed(1) + ' km';
 
+        // Update the in-viewport telemetry HUD
+        updateSimHud(scenario, frame, dist);
+
         // Fire events at their scheduled frames
         while (eventIdx < scenario.events.length && scenario.events[eventIdx].frame <= frame) {
             const evt = scenario.events[eventIdx];
@@ -1355,7 +1379,11 @@ function stopSimulation() {
     document.getElementById('sim-play-btn').disabled = false;
     document.getElementById('sim-stop-btn').disabled = true;
 
-    setTimeout(clearSimObjects, 2000);
+    // Hide the telemetry HUD
+    const hud = document.getElementById('sim-hud');
+    if (hud) hud.classList.add('hidden');
+
+    clearSimObjects();
 }
 
 function createSimObjects() {
@@ -1404,12 +1432,12 @@ function createSimObjects() {
     const glow2 = new THREE.Mesh(glow2Geo, glow2Mat);
     simPlayer.obj2Mesh.add(glow2);
 
-    // Distance line between objects
+    // Distance line between objects (pre-allocate buffer for in-place updates)
     const lineGeo = new THREE.BufferGeometry();
-    const lineMat = new THREE.LineDashedMaterial({
+    const linePositions = new Float32Array(6); // 2 points x 3 components
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+    const lineMat = new THREE.LineBasicMaterial({
         color: 0xffcc00,
-        dashSize: 0.01,
-        gapSize: 0.008,
         transparent: true,
         opacity: 0.6
     });
@@ -1427,7 +1455,70 @@ function createSimObjects() {
     simPlayer.burnEffect = new THREE.Mesh(burnGeo, burnMat);
     simPlayer.simGroup.add(simPlayer.burnEffect);
 
+    // Floating labels above each object
+    const label1Text = simPlayer.scenario?.metadata?.object1_type
+        ? `${simPlayer.scenario.metadata.object1_type}-1` : 'OBJECT-1';
+    const label2Text = simPlayer.scenario?.metadata?.object2_type
+        ? `${simPlayer.scenario.metadata.object2_type}-2` : 'OBJECT-2';
+    simPlayer.label1 = createTextSprite(label1Text, '#00d4ff');
+    simPlayer.label2 = createTextSprite(label2Text, '#ff4444');
+    simPlayer.simGroup.add(simPlayer.label1);
+    simPlayer.simGroup.add(simPlayer.label2);
+
+    // Velocity direction arrows
+    simPlayer.velocityArrow1 = new THREE.ArrowHelper(
+        new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 0.08, 0x00d4ff
+    );
+    simPlayer.velocityArrow2 = new THREE.ArrowHelper(
+        new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 0.08, 0xff4444
+    );
+    simPlayer.simGroup.add(simPlayer.velocityArrow1);
+    simPlayer.simGroup.add(simPlayer.velocityArrow2);
+
     scene.add(simPlayer.simGroup);
+}
+
+// ============================================================================
+// TEXT SPRITES (floating HTML-free labels rendered via canvas texture)
+// ============================================================================
+
+function createTextSprite(text, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = '600 32px "JetBrains Mono", monospace';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(0.16, 0.04, 1);
+    return sprite;
+}
+
+function updateLabelText(sprite, text, color) {
+    if (!sprite || !sprite.material || !sprite.material.map) return;
+    const canvas = sprite.material.map.image;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = '600 32px "JetBrains Mono", monospace';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    sprite.material.map.needsUpdate = true;
 }
 
 function clearSimObjects() {
@@ -1455,8 +1546,138 @@ function clearSimObjects() {
         scene.remove(simPlayer.debrisCloud);
         simPlayer.debrisCloud = null;
     }
+    if (simPlayer.pathPreviewGroup) {
+        scene.remove(simPlayer.pathPreviewGroup);
+        simPlayer.pathPreviewGroup = null;
+    }
+    if (simPlayer.tcaPulseInterval) {
+        clearInterval(simPlayer.tcaPulseInterval);
+        simPlayer.tcaPulseInterval = null;
+    }
+    // Labels and velocity arrows are children of simGroup and are removed
+    // along with it above; just clear the references here.
+    simPlayer.label1 = null;
+    simPlayer.label2 = null;
+    simPlayer.velocityArrow1 = null;
+    simPlayer.velocityArrow2 = null;
+    simPlayer.tcaMarker = null;
     simPlayer.trailPoints1 = [];
     simPlayer.trailPoints2 = [];
+    simPlayer.prevPos1 = null;
+    simPlayer.prevPos2 = null;
+    simPlayer._prevHudDist = undefined;
+}
+
+// ============================================================================
+// PATH PREVIEW (full precomputed trajectory rendered up-front)
+// ============================================================================
+
+function drawPathPreview(scenario) {
+    simPlayer.pathPreviewGroup = new THREE.Group();
+    simPlayer.pathPreviewGroup.name = 'pathPreview';
+
+    const toVec3 = (p) => new THREE.Vector3(p[0] * SCALE, p[2] * SCALE, p[1] * SCALE);
+
+    const fadeMaterials = [];
+
+    // Object 1 original/danger path - dashed amber
+    const points1 = scenario.path_object1.map(toVec3);
+    const geo1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const mat1 = new THREE.LineDashedMaterial({
+        color: 0xffaa00,
+        dashSize: 0.03,
+        gapSize: 0.015,
+        transparent: true,
+        opacity: 0,
+    });
+    const line1 = new THREE.Line(geo1, mat1);
+    line1.computeLineDistances();
+    simPlayer.pathPreviewGroup.add(line1);
+    fadeMaterials.push({ material: mat1, target: 0.5 });
+
+    // Object 2 path - dashed red
+    const points2 = scenario.path_object2.map(toVec3);
+    const geo2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const mat2 = new THREE.LineDashedMaterial({
+        color: 0xff4444,
+        dashSize: 0.03,
+        gapSize: 0.015,
+        transparent: true,
+        opacity: 0,
+    });
+    const line2 = new THREE.Line(geo2, mat2);
+    line2.computeLineDistances();
+    simPlayer.pathPreviewGroup.add(line2);
+    fadeMaterials.push({ material: mat2, target: 0.4 });
+
+    // Object 1 corrected/safe path - solid glowing cyan (only if a correction exists)
+    if (scenario.has_correction) {
+        const pointsCorrected = scenario.path_object1_corrected.map(toVec3);
+        const geoCorrected = new THREE.BufferGeometry().setFromPoints(pointsCorrected);
+        const matCorrected = new THREE.LineBasicMaterial({
+            color: 0x06ffd0,
+            transparent: true,
+            opacity: 0,
+        });
+        const lineCorrected = new THREE.Line(geoCorrected, matCorrected);
+        simPlayer.pathPreviewGroup.add(lineCorrected);
+        fadeMaterials.push({ material: matCorrected, target: 0.8 });
+
+        // Burn point marker on the original path (cyan cone)
+        const burnPos = toVec3(scenario.path_object1[scenario.maneuver_frame]);
+        const burnMarkerGeo = new THREE.ConeGeometry(0.015, 0.04, 8);
+        const burnMarkerMat = new THREE.MeshBasicMaterial({
+            color: 0x06ffd0,
+            transparent: true,
+            opacity: 0,
+        });
+        const burnMarker = new THREE.Mesh(burnMarkerGeo, burnMarkerMat);
+        burnMarker.position.copy(burnPos);
+        simPlayer.pathPreviewGroup.add(burnMarker);
+        fadeMaterials.push({ material: burnMarkerMat, target: 0.9 });
+    }
+
+    // TCA ring marker (pulsing)
+    const tcaPos = toVec3(scenario.path_object1[scenario.tca_frame]);
+    const tcaGeo = new THREE.RingGeometry(0.022, 0.03, 32);
+    const tcaMat = new THREE.MeshBasicMaterial({
+        color: 0xff9500,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+    });
+    simPlayer.tcaMarker = new THREE.Mesh(tcaGeo, tcaMat);
+    simPlayer.tcaMarker.position.copy(tcaPos);
+    simPlayer.tcaMarker.lookAt(camera.position);
+    simPlayer.pathPreviewGroup.add(simPlayer.tcaMarker);
+    fadeMaterials.push({ material: tcaMat, target: 0.85 });
+
+    scene.add(simPlayer.pathPreviewGroup);
+
+    // Fade in all preview materials over ~800ms
+    const fadeStart = Date.now();
+    const fadeDuration = 800;
+    function fadeStep() {
+        if (!simPlayer.pathPreviewGroup) return; // cleared already
+        const elapsed = Date.now() - fadeStart;
+        const t = Math.min(elapsed / fadeDuration, 1);
+        fadeMaterials.forEach(({ material, target }) => {
+            material.opacity = target * t;
+        });
+        if (t < 1) requestAnimationFrame(fadeStep);
+    }
+    fadeStep();
+
+    // Subtle pulsing animation for the TCA ring marker
+    simPlayer.tcaPulseInterval = setInterval(() => {
+        if (!simPlayer.tcaMarker) {
+            clearInterval(simPlayer.tcaPulseInterval);
+            simPlayer.tcaPulseInterval = null;
+            return;
+        }
+        const scale = 1.0 + Math.sin(Date.now() * 0.004) * 0.25;
+        simPlayer.tcaMarker.scale.set(scale, scale, scale);
+    }, 40);
 }
 
 function updateSimFrame(data) {
@@ -1477,15 +1698,47 @@ function updateSimFrame(data) {
     simPlayer.obj1Mesh.position.copy(pos1);
     simPlayer.obj2Mesh.position.copy(pos2);
 
-    // Update distance line
-    const linePositions = new Float32Array([
-        pos1.x, pos1.y, pos1.z,
-        pos2.x, pos2.y, pos2.z
-    ]);
-    simPlayer.distanceLine.geometry.dispose();
-    simPlayer.distanceLine.geometry = new THREE.BufferGeometry();
-    simPlayer.distanceLine.geometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
-    simPlayer.distanceLine.computeLineDistances();
+    // Update floating labels (positioned slightly above each mesh)
+    if (simPlayer.label1) {
+        simPlayer.label1.position.set(pos1.x, pos1.y + 0.08, pos1.z);
+    }
+    if (simPlayer.label2) {
+        simPlayer.label2.position.set(pos2.x, pos2.y + 0.08, pos2.z);
+    }
+
+    // Update velocity direction arrows from previous frame's position
+    if (simPlayer.velocityArrow1) {
+        simPlayer.velocityArrow1.position.copy(pos1);
+        if (simPlayer.prevPos1) {
+            const dir1 = pos1.clone().sub(simPlayer.prevPos1);
+            if (dir1.lengthSq() > 1e-10) {
+                simPlayer.velocityArrow1.setDirection(dir1.normalize());
+            }
+        }
+    }
+    if (simPlayer.velocityArrow2) {
+        simPlayer.velocityArrow2.position.copy(pos2);
+        if (simPlayer.prevPos2) {
+            const dir2 = pos2.clone().sub(simPlayer.prevPos2);
+            if (dir2.lengthSq() > 1e-10) {
+                simPlayer.velocityArrow2.setDirection(dir2.normalize());
+            }
+        }
+    }
+    simPlayer.prevPos1 = pos1.clone();
+    simPlayer.prevPos2 = pos2.clone();
+
+    // Update distance line (reuse geometry, just update positions)
+    const posAttr = simPlayer.distanceLine.geometry.getAttribute('position');
+    if (posAttr) {
+        posAttr.array[0] = pos1.x;
+        posAttr.array[1] = pos1.y;
+        posAttr.array[2] = pos1.z;
+        posAttr.array[3] = pos2.x;
+        posAttr.array[4] = pos2.y;
+        posAttr.array[5] = pos2.z;
+        posAttr.needsUpdate = true;
+    }
 
     // Color distance line by proximity (green -> yellow -> red)
     const dist = data.distance_km;
@@ -1507,37 +1760,31 @@ function updateSimFrame(data) {
         if (simPlayer.trailPoints1.length > maxTrail) simPlayer.trailPoints1.shift();
         if (simPlayer.trailPoints2.length > maxTrail) simPlayer.trailPoints2.shift();
 
-        // Redraw trail 1
+        // Update trail 1 geometry in-place
         if (simPlayer.trailPoints1.length > 2) {
-            if (simPlayer.obj1Trail) {
-                simPlayer.obj1Trail.geometry.dispose();
-                scene.remove(simPlayer.obj1Trail);
+            if (!simPlayer.obj1Trail) {
+                const trailGeo = new THREE.BufferGeometry();
+                const trailMat = new THREE.LineBasicMaterial({
+                    color: 0x00d4ff, transparent: true, opacity: 0.6
+                });
+                simPlayer.obj1Trail = new THREE.Line(trailGeo, trailMat);
+                scene.add(simPlayer.obj1Trail);
             }
-            const trailGeo = new THREE.BufferGeometry().setFromPoints(simPlayer.trailPoints1);
-            const trailColor = data.is_corrected ? 0x06ffd0 : 0x00d4ff;
-            const trailMat = new THREE.LineBasicMaterial({
-                color: trailColor,
-                transparent: true,
-                opacity: 0.6
-            });
-            simPlayer.obj1Trail = new THREE.Line(trailGeo, trailMat);
-            scene.add(simPlayer.obj1Trail);
+            simPlayer.obj1Trail.geometry.setFromPoints(simPlayer.trailPoints1);
+            simPlayer.obj1Trail.material.color.setHex(data.is_corrected ? 0x06ffd0 : 0x00d4ff);
         }
 
-        // Redraw trail 2
+        // Update trail 2 geometry in-place
         if (simPlayer.trailPoints2.length > 2) {
-            if (simPlayer.obj2Trail) {
-                simPlayer.obj2Trail.geometry.dispose();
-                scene.remove(simPlayer.obj2Trail);
+            if (!simPlayer.obj2Trail) {
+                const trailGeo = new THREE.BufferGeometry();
+                const trailMat = new THREE.LineBasicMaterial({
+                    color: 0xff4444, transparent: true, opacity: 0.5
+                });
+                simPlayer.obj2Trail = new THREE.Line(trailGeo, trailMat);
+                scene.add(simPlayer.obj2Trail);
             }
-            const trailGeo = new THREE.BufferGeometry().setFromPoints(simPlayer.trailPoints2);
-            const trailMat = new THREE.LineBasicMaterial({
-                color: 0xff4444,
-                transparent: true,
-                opacity: 0.5
-            });
-            simPlayer.obj2Trail = new THREE.Line(trailGeo, trailMat);
-            scene.add(simPlayer.obj2Trail);
+            simPlayer.obj2Trail.geometry.setFromPoints(simPlayer.trailPoints2);
         }
     }
 
@@ -1567,6 +1814,13 @@ function handleSimEvent(evt) {
             addEventLogEntry('critical', message);
             // Pulse the danger indicator
             flashDangerIndicator();
+            // Cinematic zoom toward a point between both objects
+            if (simPlayer.obj1Mesh && simPlayer.obj2Mesh) {
+                const mid = simPlayer.obj1Mesh.position.clone()
+                    .add(simPlayer.obj2Mesh.position).multiplyScalar(0.5);
+                const camTarget = mid.clone().add(new THREE.Vector3(1.2, 1.2, 1.2).normalize().multiplyScalar(1.2));
+                animateCamera(camTarget, mid, 1300);
+            }
             break;
 
         case 'maneuver_planning':
@@ -1595,14 +1849,20 @@ function handleSimEvent(evt) {
         case 'collision':
             addEventLogEntry('explosion', message);
             triggerCollisionFlash();
+            // Cinematic tight zoom to the TCA point
+            zoomToTcaPoint();
             break;
 
         case 'closest_approach':
             addEventLogEntry('success', message);
+            // Cinematic tight zoom to the TCA point
+            zoomToTcaPoint();
             break;
 
         case 'scenario_end':
             addEventLogEntry('info', message);
+            // Pull back to the wide establishing shot
+            animateCamera(new THREE.Vector3(2.5, 1.5, 3.5), new THREE.Vector3(0, 0, 0), 1500);
             break;
 
         default:
@@ -1763,6 +2023,51 @@ function spawnDebrisExplosion(fragments) {
             clearInterval(debrisInterval);
         }
     }, 30);
+}
+
+function zoomToTcaPoint() {
+    if (!simPlayer.scenario) return;
+    const tcaPos = simPlayer.scenario.path_object1[simPlayer.scenario.tca_frame];
+    const tcaVec = new THREE.Vector3(
+        tcaPos[0] * SCALE, tcaPos[2] * SCALE, tcaPos[1] * SCALE
+    );
+    // Distance ~1.0 along a diagonal offset for a tight, cinematic framing
+    const camTarget = tcaVec.clone().add(new THREE.Vector3(0.6, 0.6, 0.6).normalize().multiplyScalar(1.0));
+    animateCamera(camTarget, tcaVec, 1400);
+}
+
+function updateSimHud(scenario, frame, dist) {
+    const hud = document.getElementById('sim-hud');
+    if (!hud || hud.classList.contains('hidden')) return;
+
+    const distEl = document.getElementById('hud-distance');
+    const velEl = document.getElementById('hud-velocity');
+    const tcaEl = document.getElementById('hud-tca');
+
+    if (distEl) distEl.textContent = dist.toFixed(1) + ' km';
+
+    // Closing/relative velocity: derived from the change in distance over one frame
+    if (velEl) {
+        const prevDist = simPlayer._prevHudDist;
+        if (prevDist !== undefined) {
+            const closingKms = (prevDist - dist) / 0.05;
+            velEl.textContent = Math.abs(closingKms).toFixed(2) + ' km/s ' + (closingKms >= 0 ? '(closing)' : '(opening)');
+        } else {
+            velEl.textContent = '-- km/s';
+        }
+    }
+    simPlayer._prevHudDist = dist;
+
+    // Estimated time to TCA
+    if (tcaEl) {
+        const framesRemaining = scenario.tca_frame - frame;
+        if (framesRemaining <= 0) {
+            tcaEl.textContent = 'PASSED';
+        } else {
+            const secondsRemaining = framesRemaining * 0.05 / simPlayer.speed;
+            tcaEl.textContent = secondsRemaining.toFixed(1) + ' s';
+        }
+    }
 }
 
 function flashDangerIndicator() {
