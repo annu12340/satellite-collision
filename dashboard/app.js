@@ -1269,9 +1269,9 @@ function startSimulation() {
         addEventLogEntry('info', `Scenario: ${data.name}`);
         addEventLogEntry('info', `Alt: ${data.metadata.altitude_km} km | V_rel: ${data.metadata.relative_velocity_kms} km/s`);
 
-        // Move camera to watch the action
-        const camPos = new THREE.Vector3(0, 1.8, 2.5);
-        animateCamera(camPos, new THREE.Vector3(0, 0, 1.1));
+        // Move camera to a wide view that shows Earth + simulation objects
+        const camPos = new THREE.Vector3(2.5, 1.5, 3.5);
+        animateCamera(camPos, new THREE.Vector3(0, 0, 0));
     });
 
     simPlayer.eventSource.addEventListener('frame', (e) => {
@@ -1334,7 +1334,7 @@ function createSimObjects() {
     simPlayer.simGroup.name = 'simulation';
 
     // Object 1 (maneuverable spacecraft) - bright cyan sphere
-    const geo1 = new THREE.SphereGeometry(0.025, 16, 16);
+    const geo1 = new THREE.SphereGeometry(0.035, 16, 16);
     const mat1 = new THREE.MeshBasicMaterial({
         color: 0x00d4ff,
         transparent: true,
@@ -1344,18 +1344,18 @@ function createSimObjects() {
     simPlayer.simGroup.add(simPlayer.obj1Mesh);
 
     // Object 1 glow
-    const glow1Geo = new THREE.SphereGeometry(0.04, 12, 12);
+    const glow1Geo = new THREE.SphereGeometry(0.06, 12, 12);
     const glow1Mat = new THREE.MeshBasicMaterial({
         color: 0x00d4ff,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.35,
         blending: THREE.AdditiveBlending
     });
     const glow1 = new THREE.Mesh(glow1Geo, glow1Mat);
     simPlayer.obj1Mesh.add(glow1);
 
     // Object 2 (debris/target) - red-orange sphere
-    const geo2 = new THREE.SphereGeometry(0.02, 16, 16);
+    const geo2 = new THREE.SphereGeometry(0.03, 16, 16);
     const mat2 = new THREE.MeshBasicMaterial({
         color: 0xff4444,
         transparent: true,
@@ -1365,11 +1365,11 @@ function createSimObjects() {
     simPlayer.simGroup.add(simPlayer.obj2Mesh);
 
     // Object 2 glow
-    const glow2Geo = new THREE.SphereGeometry(0.035, 12, 12);
+    const glow2Geo = new THREE.SphereGeometry(0.05, 12, 12);
     const glow2Mat = new THREE.MeshBasicMaterial({
         color: 0xff4444,
         transparent: true,
-        opacity: 0.25,
+        opacity: 0.3,
         blending: THREE.AdditiveBlending
     });
     const glow2 = new THREE.Mesh(glow2Geo, glow2Mat);
