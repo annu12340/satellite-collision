@@ -164,22 +164,22 @@
                         Constellation
                     </h3>
                     <div class="constellation-stats compact-stats">
-                        <div class="const-stat">
+                        <div class="const-stat" data-type="COMSAT">
                             <span class="const-icon comsat"></span>
                             <span class="const-label">COMSAT</span>
                             <span class="const-value" id="c-comsat">--</span>
                         </div>
-                        <div class="const-stat">
+                        <div class="const-stat" data-type="EOS">
                             <span class="const-icon eos"></span>
                             <span class="const-label">EOS</span>
                             <span class="const-value" id="c-eos">--</span>
                         </div>
-                        <div class="const-stat">
+                        <div class="const-stat" data-type="CUBE">
                             <span class="const-icon cube"></span>
                             <span class="const-label">Cube</span>
                             <span class="const-value" id="c-cube">--</span>
                         </div>
-                        <div class="const-stat">
+                        <div class="const-stat" data-type="DEBRIS">
                             <span class="const-icon debris"></span>
                             <span class="const-label">Debris</span>
                             <span class="const-value" id="c-debris">--</span>
@@ -192,6 +192,7 @@
                     <h3 class="section-title">
                         <span class="title-icon">&#128752;</span>
                         Active Conjunctions
+                        <span class="sim-status-badge idle" id="conjunctions-badge">IDLE</span>
                     </h3>
                     <div class="conjunction-list" id="conjunction-list"></div>
                 </div>
@@ -201,6 +202,7 @@
                     <h3 class="section-title">
                         <span class="title-icon">&#128640;</span>
                         Maneuver Queue
+                        <span class="sim-status-badge idle" id="maneuver-badge">IDLE</span>
                     </h3>
                     <div class="maneuver-list" id="maneuver-list"></div>
                 </div>
@@ -210,6 +212,7 @@
                     <h3 class="section-title">
                         <span class="title-icon">&#127757;</span>
                         Altitude Distribution
+                        <span class="sim-status-badge idle" id="altitude-badge">IDLE</span>
                     </h3>
                     <canvas id="altitude-chart" width="260" height="70"></canvas>
                 </div>
@@ -219,6 +222,7 @@
                     <h3 class="section-title">
                         <span class="title-icon">&#127776;</span>
                         Kessler Index
+                        <span class="sim-status-badge idle" id="kessler-badge">IDLE</span>
                     </h3>
                     <div class="kessler-gauge compact-gauge">
                         <div class="gauge-track">

@@ -51,6 +51,10 @@ from src.risk_optimizer import (
 )
 from src.orbital_mechanics import generate_ephemeris, propagate_state
 from src.damage_minimization import predict_collision_outcome
+from src.simulation import plot_orbits_3d
+
+# Absolute path to the repo root (where the matplotlib PNGs are saved)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 app = Flask(__name__, static_folder='../dashboard', static_url_path='')
@@ -233,7 +237,10 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
                 float(cp[2] + np.random.normal(0, spread)),
             ])
 
-    # Build SSE events timeline
+    # Build SSE events timeline (mission-control style telemetry feed)
+    n_debris_estimate = int(estimate_debris_count(mass1, mass2, relative_velocity_kms))
+    fuel_available_ms = maneuver_dv_ms * 3.2 + 4.0  # plausible remaining budget
+
     events = []
     events.append({
         'frame': 0,
@@ -242,24 +249,61 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
         'data': {'relative_velocity': relative_velocity_kms, 'altitude': altitude_km}
     })
     events.append({
+        'frame': int(n_frames * 0.08),
+        'type': 'radar_contact',
+        'message': f'Ground radar contact acquired at {altitude_km:.0f} km altitude. Tracking initiated.',
+        'data': {'sensor': 'GROUND_RADAR', 'altitude_km': altitude_km}
+    })
+    events.append({
         'frame': int(n_frames * 0.15),
         'type': 'detection',
         'message': f'Conjunction detected. Pc rising. Miss distance: {min_distance:.1f} km',
         'data': {'pc': 2.3e-4, 'miss_distance': min_distance}
     })
     events.append({
+        'frame': int(n_frames * 0.20),
+        'type': 'orbit_refinement',
+        'message': 'Orbit determination refined using 3 additional tracking passes.',
+        'data': {'tracking_passes': 3}
+    })
+    events.append({
+        'frame': int(n_frames * 0.25),
+        'type': 'covariance_update',
+        'message': 'Position uncertainty reduced to \u00b1120 m (1\u03c3) in encounter plane.',
+        'data': {'sigma_m': 120}
+    })
+    events.append({
         'frame': int(n_frames * 0.3),
         'type': 'risk_assessment',
         'message': f'Risk level: CRITICAL. Relative velocity: {relative_velocity_kms} km/s',
-        'data': {'risk_level': 'CRITICAL', 'fragments_if_collision': int(estimate_debris_count(mass1, mass2, relative_velocity_kms))}
+        'data': {'risk_level': 'CRITICAL', 'fragments_if_collision': n_debris_estimate}
+    })
+    events.append({
+        'frame': int(n_frames * 0.34),
+        'type': 'ground_alert',
+        'message': 'Conjunction Assessment Report (CAR) transmitted to satellite operator.',
+        'data': {'report': 'CAR', 'recipient': 'OPERATOR'}
     })
 
     if has_correction:
+        events.append({
+            'frame': max(maneuver_frame - 18, int(n_frames * 0.34) + 1),
+            'type': 'fuel_check',
+            'message': f'Fuel budget check: {fuel_available_ms:.1f} m/s available, '
+                        f'{maneuver_dv_ms:.1f} m/s required. GO for maneuver.',
+            'data': {'fuel_available_ms': fuel_available_ms, 'fuel_required_ms': maneuver_dv_ms}
+        })
         events.append({
             'frame': maneuver_frame - 5,
             'type': 'maneuver_planning',
             'message': f'Computing optimal avoidance maneuver. dv={maneuver_dv_ms:.1f} m/s',
             'data': {'delta_v_ms': maneuver_dv_ms, 'direction': 'cross-track'}
+        })
+        events.append({
+            'frame': maneuver_frame - 2,
+            'type': 'attitude_control',
+            'message': 'Reorienting spacecraft to burn attitude. Reaction wheels engaged.',
+            'data': {'subsystem': 'ADCS'}
         })
         events.append({
             'frame': maneuver_frame,
@@ -274,10 +318,28 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
             'data': {'fuel_used_ms': maneuver_dv_ms}
         })
         events.append({
+            'frame': min(maneuver_frame + 22, tca_frame - 6),
+            'type': 'post_burn_tracking',
+            'message': 'Post-burn tracking confirms new orbit within predicted envelope.',
+            'data': {'fuel_remaining_ms': fuel_available_ms - maneuver_dv_ms}
+        })
+        events.append({
+            'frame': max(tca_frame - 8, maneuver_frame + 1),
+            'type': 'final_approach',
+            'message': f'Final approach: {(tca_frame - (tca_frame - 8)) * 0.05:.1f}s to closest approach.',
+            'data': {'seconds_to_tca': (tca_frame - (tca_frame - 8)) * 0.05}
+        })
+        events.append({
             'frame': tca_frame,
             'type': 'closest_approach',
             'message': f'TCA passed. Miss distance: {min_distance_corrected:.2f} km. SAFE.',
             'data': {'miss_distance_corrected': min_distance_corrected, 'status': 'SAFE'}
+        })
+        events.append({
+            'frame': min(tca_frame + 15, n_frames - 12),
+            'type': 'secondary_screening',
+            'message': 'Screening for secondary conjunctions... none found within 24h window.',
+            'data': {'secondary_conjunctions': 0}
         })
         events.append({
             'frame': n_frames - 10,
@@ -285,12 +347,24 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
             'message': 'Conjunction resolved. Returning to nominal operations.',
             'data': {'outcome': 'AVOIDANCE_SUCCESS'}
         })
+        events.append({
+            'frame': n_frames - 4,
+            'type': 'archival',
+            'message': 'Conjunction case archived. Event log committed to mission database.',
+            'data': {'status': 'CLOSED'}
+        })
     else:
         events.append({
             'frame': maneuver_frame,
             'type': 'no_maneuver',
             'message': 'NO MANEUVER CAPABILITY. Object is non-maneuverable debris.',
             'data': {'reason': 'non_maneuverable'}
+        })
+        events.append({
+            'frame': maneuver_frame + 10,
+            'type': 'operator_response',
+            'message': 'Operators confirm: no avoidance options available for this object.',
+            'data': {'status': 'NO_ACTION_POSSIBLE'}
         })
         events.append({
             'frame': tca_frame - 5,
@@ -301,12 +375,25 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
         events.append({
             'frame': tca_frame,
             'type': 'collision',
-            'message': f'COLLISION DETECTED. {int(estimate_debris_count(mass1, mass2, relative_velocity_kms))} fragments generated.',
+            'message': f'COLLISION DETECTED. {n_debris_estimate} fragments generated.',
             'data': {
-                'fragments': int(estimate_debris_count(mass1, mass2, relative_velocity_kms)),
+                'fragments': n_debris_estimate,
                 'is_catastrophic': True,
                 'energy_j_per_kg': float(0.5 * min(mass1, mass2) * (relative_velocity_kms * 1000) ** 2 / max(mass1, mass2))
             }
+        })
+        events.append({
+            'frame': min(tca_frame + 8, n_frames - 14),
+            'type': 'debris_field_analysis',
+            'message': f'Debris field analysis: {n_debris_estimate} fragments >10cm tracked. '
+                        f'Cascade risk elevated.',
+            'data': {'fragments_tracked': n_debris_estimate, 'cascade_risk': 'HIGH'}
+        })
+        events.append({
+            'frame': min(tca_frame + 16, n_frames - 8),
+            'type': 'secondary_screening',
+            'message': 'Screening for secondary conjunctions from new debris field...',
+            'data': {'secondary_conjunctions': 'PENDING'}
         })
         events.append({
             'frame': n_frames - 10,
@@ -314,6 +401,17 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
             'message': 'Debris cloud expanding. Cascade risk elevated.',
             'data': {'outcome': 'COLLISION', 'cascade_risk': 'HIGH'}
         })
+        events.append({
+            'frame': n_frames - 4,
+            'type': 'archival',
+            'message': 'Collision case archived. Event log committed to mission database.',
+            'data': {'status': 'CLOSED'}
+        })
+
+    # Keep the timeline strictly ordered by frame (defensive: several
+    # frame offsets above are computed dynamically and could otherwise
+    # land out of order for unusual maneuver_time_fraction values)
+    events.sort(key=lambda e: e['frame'])
 
     return {
         'name': name,
@@ -592,6 +690,23 @@ def run_simulation(seed=42, n_spacecraft=50):
     # (dynamic equivalent of debris_analysis.png)
     debris_analysis = build_debris_analysis(sim)
 
+    # Regenerate the 3D orbits plot (orbits_3d.png) from this run's data so
+    # the "View Orbits 3D" button always reflects the latest simulation.
+    # plot_orbits_3d() saves relative to the process cwd, so temporarily
+    # switch to the repo root (where the dashboard expects to find the file).
+    try:
+        prev_cwd = os.getcwd()
+        os.chdir(ROOT_DIR)
+        try:
+            plot_orbits_3d(
+                sim.spacecraft_list, sim.conjunctions, sim.planned_maneuvers,
+                title=f"Orbital Configuration (seed={seed})"
+            )
+        finally:
+            os.chdir(prev_cwd)
+    except Exception as e:
+        print(f"  Warning: could not regenerate orbits_3d.png: {e}")
+
     SIM_DATA.clear()
     SIM_DATA.update({
         'spacecraft': spacecraft_data,
@@ -693,6 +808,17 @@ def get_debris_analysis():
 def get_all():
     """All simulation data in a single request (for initial load)."""
     return jsonify(SIM_DATA)
+
+
+@app.route('/orbits_3d.png')
+def get_orbits_3d_image():
+    """Serve the latest generated 3D orbits plot (matplotlib PNG)."""
+    path = os.path.join(ROOT_DIR, 'orbits_3d.png')
+    if not os.path.exists(path):
+        return jsonify({'error': 'orbits_3d.png not generated yet'}), 404
+    response = send_from_directory(ROOT_DIR, 'orbits_3d.png')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
 
 
 @app.route('/api/run', methods=['POST'])
@@ -837,4 +963,9 @@ if __name__ == '__main__':
     print("\n" + "=" * 60)
     print("  DASHBOARD RUNNING: http://localhost:8050")
     print("=" * 60 + "\n")
-    app.run(host='0.0.0.0', port=8050, debug=False)
+    # threaded=True is required: the /api/run endpoint blocks for 30-90s+
+    # while re-running the full simulation pipeline. Without threading,
+    # Flask's dev server can only handle one request at a time, so a
+    # long-running /api/run call would freeze /api/all and every other
+    # route (including the initial page load) until it finished.
+    app.run(host='0.0.0.0', port=8050, debug=False, threaded=True)
