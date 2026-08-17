@@ -560,6 +560,16 @@ class InterventionOptimizer:
                 if fuel_remaining <= 1e-6:
                     continue
 
+                # Same Pc-threshold decision gate used by greedy_optimize /
+                # plan_avoidance_campaign (see avoidance.ManeuverDecision).
+                # design_avoidance_maneuver runs STM-based numerical
+                # propagation and is expensive; skip it for conjunctions
+                # that don't warrant a maneuver decision in the first
+                # place (MONITOR/ACCEPT-level risk).
+                decision = ManeuverDecision.should_maneuver(conj, sc, conj.tca)
+                if decision not in ('MANEUVER', 'CONSIDER'):
+                    continue
+
                 maneuver = design_avoidance_maneuver(sc, other, conj)
                 if maneuver is None or maneuver.fuel_cost <= 0:
                     continue

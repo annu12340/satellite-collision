@@ -125,6 +125,11 @@ function showDashboard() {
     setTimeout(() => {
         document.getElementById('loading-screen').style.display = 'none';
         onWindowResize();
+        // The orbits3d Plotly div was rendered while the dashboard was
+        // display:none (zero size), so resize it now that it's visible.
+        if (typeof Plotly !== 'undefined') {
+            Plotly.Plots.resize('orbits3d-plotly');
+        }
     }, 600);
 }
 

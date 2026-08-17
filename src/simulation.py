@@ -626,19 +626,36 @@ def plot_orbits_3d(spacecraft_list: List[Spacecraft],
     title : str
         Plot title
     """
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
+    # Dark theme to match the dashboard's UI (bg-primary #0a0e17)
+    bg_color = '#0a0e17'
+    panel_color = '#0f1520'
+    grid_color = '#1e2a42'
+    text_color = '#8b9cc0'
 
-    # Draw Earth
+    fig = plt.figure(figsize=(12, 10), facecolor=bg_color)
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_facecolor(bg_color)
+
+    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+        pane.set_facecolor(panel_color)
+        pane.set_edgecolor(grid_color)
+        pane.set_alpha(1.0)
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis.line.set_color(grid_color)
+        axis._axinfo['grid']['color'] = grid_color
+        axis.label.set_color(text_color)
+    ax.tick_params(colors=text_color)
+
+    # Draw Earth (accent-blue tinted sphere, matching the dashboard's 3D globe)
     u = np.linspace(0, 2 * np.pi, 30)
     v_angles = np.linspace(0, np.pi, 20)
     x_earth = R_EARTH * np.outer(np.cos(u), np.sin(v_angles))
     y_earth = R_EARTH * np.outer(np.sin(u), np.sin(v_angles))
     z_earth = R_EARTH * np.outer(np.ones_like(u), np.cos(v_angles))
-    ax.plot_surface(x_earth, y_earth, z_earth, alpha=0.3, color='blue')
+    ax.plot_surface(x_earth, y_earth, z_earth, alpha=0.35, color='#00d4ff', linewidth=0)
 
-    # Plot orbit arcs for each spacecraft
-    colors = {'COMSAT': 'green', 'EOS': 'orange', 'CUBE': 'cyan', 'DEBRIS': 'red'}
+    # Plot orbit arcs for each spacecraft (dashboard accent palette)
+    colors = {'COMSAT': '#00d4ff', 'EOS': '#7b2ff7', 'CUBE': '#06ffd0', 'DEBRIS': '#ff6b6b'}
 
     for sc in spacecraft_list[:30]:  # Limit for clarity
         # Generate one orbit arc
@@ -649,12 +666,12 @@ def plot_orbits_3d(spacecraft_list: List[Spacecraft],
         try:
             eph = generate_ephemeris(sc.state, times, include_drag=False)
             prefix = sc.id.split('_')[0]
-            color = colors.get(prefix, 'white')
+            color = colors.get(prefix, '#e8edf5')
             ax.plot(eph[:, 0], eph[:, 1], eph[:, 2],
-                   alpha=0.4, linewidth=0.5, color=color)
+                   alpha=0.5, linewidth=0.6, color=color)
 
             # Mark current position
-            ax.scatter(*sc.state.r, s=10, color=color, alpha=0.8)
+            ax.scatter(*sc.state.r, s=10, color=color, alpha=0.9)
         except RuntimeError:
             pass
 
@@ -668,30 +685,31 @@ def plot_orbits_3d(spacecraft_list: List[Spacecraft],
                 # Draw line between conjunction objects
                 points = np.array([sc1.state.r, sc2.state.r])
                 ax.plot(points[:, 0], points[:, 1], points[:, 2],
-                       'r-', linewidth=2, alpha=0.7)
+                       color='#ff2d55', linestyle='-', linewidth=2, alpha=0.8)
                 # Mark with X
                 mid = (sc1.state.r + sc2.state.r) / 2
-                ax.scatter(*mid, marker='x', s=100, color='red', linewidth=2)
+                ax.scatter(*mid, marker='x', s=100, color='#ff2d55', linewidth=2)
 
-    ax.set_xlabel('X [km]')
-    ax.set_ylabel('Y [km]')
-    ax.set_zlabel('Z [km]')
-    ax.set_title(title)
+    ax.set_xlabel('X [km]', color=text_color)
+    ax.set_ylabel('Y [km]', color=text_color)
+    ax.set_zlabel('Z [km]', color=text_color)
+    ax.set_title(title, color='#e8edf5')
 
     # Legend
     from matplotlib.lines import Line2D
     legend_elements = [
-        Line2D([0], [0], color='green', label='Communication Sats'),
-        Line2D([0], [0], color='orange', label='Earth Observation'),
-        Line2D([0], [0], color='cyan', label='CubeSats'),
-        Line2D([0], [0], color='red', label='Debris/Defunct'),
-        Line2D([0], [0], color='red', marker='x', linestyle='',
+        Line2D([0], [0], color='#00d4ff', label='Communication Sats'),
+        Line2D([0], [0], color='#7b2ff7', label='Earth Observation'),
+        Line2D([0], [0], color='#06ffd0', label='CubeSats'),
+        Line2D([0], [0], color='#ff6b6b', label='Debris/Defunct'),
+        Line2D([0], [0], color='#ff2d55', marker='x', linestyle='',
                markersize=10, label='Conjunction'),
     ]
-    ax.legend(handles=legend_elements, loc='upper left')
+    legend = ax.legend(handles=legend_elements, loc='upper left', facecolor=panel_color,
+                        edgecolor=grid_color, labelcolor=text_color)
 
     plt.tight_layout()
-    plt.savefig('orbits_3d.png', dpi=150, bbox_inches='tight')
+    plt.savefig('orbits_3d.png', dpi=150, bbox_inches='tight', facecolor=bg_color)
     print("  Saved: orbits_3d.png")
     plt.close()
 
