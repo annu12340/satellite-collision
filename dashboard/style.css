@@ -1529,3 +1529,34 @@ body {
     padding: 40px;
     text-align: center;
 }
+
+/* ============================================================================
+   ORBITS 3D INLINE THUMBNAIL (right panel)
+   ============================================================================ */
+
+.orbits3d-inline-wrap {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--bg-card);
+    transition: border-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+}
+
+.orbits3d-inline-wrap:hover {
+    border-color: var(--border-glow);
+}
+
+.orbits3d-inline-wrap img {
+    width: 100%;
+    display: block;
+}
+
+.orbits3d-inline-wrap .modal-empty {
+    padding: 16px;
+    font-size: 0.65rem;
+}

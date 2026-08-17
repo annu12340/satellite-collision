@@ -2,6 +2,9 @@ Your risk_optimizer.py has custom greedy/network-flow/MCTS implementations for t
 Concretely: your network_flow_optimize() method is already framing this as a min-cost flow problem on a graph — that's a natural cuOpt LP/MILP formulation instead of NetworkX's approximate max-flow. Your mcts_optimize() for large-scale multi-step planning could stay custom (MCTS isn't cuOpt's wheelhouse), but the constrained assignment layer is a good fit.
 There's also a published pattern for wrapping cuOpt with an LLM agent — natural-language query in, optimized plan out (NVIDIA blog) — which maps well onto your existing ai_analysis.py LLM layer: an operator could ask "what's the minimum-fuel plan to resolve today's critical conjunctions?" and get a cuOpt-backed answer.
 
+
+========
+
 Vision-Language Model for your generated charts
 You already generate orbits_3d.png, risk_evolution.png, debris_analysis.png, risk_timeline.png via matplotlib. A VLM on build.nvidia.com can read those plots directly and produce a structured text summary (NVIDIA's own example model does exactly this for scientific plots — analyzing calibration charts and generating technical descriptions, per the build.nvidia.com models catalog). You could add an analyze_chart() function alongside assess_orbital_environment() in ai_analysis.py that feeds the PNG bytes to a VLM and returns a caption/insight for the dashboard, instead of (or in addition to) deriving the summary purely from raw numbers.
 Embedding model + RAG over your own docs

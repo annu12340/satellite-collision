@@ -52,6 +52,7 @@ from src.risk_optimizer import (
 from src.orbital_mechanics import generate_ephemeris, propagate_state
 from src.damage_minimization import predict_collision_outcome
 from src.simulation import plot_orbits_3d
+from src.ai_analysis import plan_intervention_from_query
 
 # Absolute path to the repo root (where the matplotlib PNGs are saved)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -65,6 +66,11 @@ CORS(app)
 # Global simulation cache
 SIM_DATA = {}
 SIM_LOCK = threading.Lock()
+
+# Holds the live CollisionPreventionSimulation object (spacecraft/conjunction
+# objects, not just their serialized JSON form) so cuOpt-backed endpoints
+# like /api/plan can run a fresh MILP solve against the current scenario.
+_CURRENT_SIM = {'sim': None}
 
 
 # ============================================================================
@@ -519,6 +525,7 @@ def run_simulation(seed=42, n_spacecraft=50):
     print(f"Running satellite collision simulation (seed={seed})...")
     sim = CollisionPreventionSimulation(n_spacecraft=n_spacecraft, seed=seed)
     sim.run_full_simulation()
+    _CURRENT_SIM['sim'] = sim
 
     # Extract spacecraft data with orbital info
     spacecraft_data = []
@@ -841,6 +848,41 @@ def run_new_simulation():
         return jsonify({'error': str(e)}), 500
     finally:
         SIM_LOCK.release()
+
+
+@app.route('/api/plan', methods=['POST'])
+def plan_intervention():
+    """
+    Natural-language intervention planning, backed by NVIDIA cuOpt.
+
+    Body: {"query": "what's the minimum-fuel plan to resolve today's
+    critical conjunctions?"}
+
+    Pipeline: the query is mapped to a conjunction subset (by risk-level
+    keyword), NVIDIA cuOpt solves the constrained maneuver-assignment MILP
+    for that subset (InterventionOptimizer.network_flow_optimize, see
+    risk_optimizer.py / cuopt_client.py), and the LLM narrates the
+    already-solved plan — it never invents delta-v numbers itself.
+
+    NOTE: this endpoint calls the NVIDIA NIM chat API (ai_analysis.py) and
+    requires NVIDIA_API_KEY to be set; the underlying cuOpt solve itself
+    does not require an API key (it runs locally unless CUOPT_SERVER_IP
+    is configured).
+    """
+    sim = _CURRENT_SIM.get('sim')
+    if sim is None:
+        return jsonify({'error': 'No simulation has been run yet. Call /api/run first.'}), 409
+
+    body = request.get_json(silent=True) or {}
+    query = body.get('query', '').strip()
+    if not query:
+        return jsonify({'error': 'Request body must include a non-empty "query" string.'}), 400
+
+    try:
+        result = plan_intervention_from_query(sim.spacecraft_list, sim.conjunctions, query)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/scenario/<scenario_id>')

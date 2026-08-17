@@ -25,6 +25,7 @@ from .utils import (
     state_to_coe, orbital_period
 )
 from .conjunction import estimate_debris_count, debris_lifetime
+from .risk_optimizer import InterventionOptimizer, InterventionPlan
 
 
 # ============================================================================
@@ -135,6 +136,16 @@ Focus on:
 - Impact of specific collision events on long-term stability
 - Concrete recommendations (deorbit timelines, avoidance zone proposals)
 - Historical context (Cosmos-Iridium 2009, Chinese ASAT 2007) for comparison"""
+
+SYSTEM_PROMPT_PLANNER = """You are a mission planning assistant for a satellite collision-avoidance operations center. An optimization solver (NVIDIA cuOpt, an LP/MILP solver) has already computed the minimum-fuel intervention plan for the requested conjunctions — a set of spacecraft-to-conjunction maneuver assignments subject to fuel-budget capacity constraints.
+
+Your job is to explain that already-computed plan in plain English for an operator, NOT to invent or alter any numbers.
+
+Rules:
+- Use ONLY the delta-v, spacecraft IDs, and risk figures given to you in the SOLVER OUTPUT. Never invent a delta-v value.
+- State the total fuel cost and how many of the requested conjunctions were resolved vs. left unresolved.
+- If conjunctions were left unresolved, say why (fuel exhausted / no maneuverable spacecraft) and flag them as needing an operator decision.
+- Keep it operational and concise: a flight dynamics officer should be able to act on this immediately."""
 
 
 # ============================================================================
@@ -442,6 +453,148 @@ Provide your assessment of:
             "status": "error",
             "error": str(e)
         }
+
+
+# ============================================================================
+# NATURAL-LANGUAGE → cuOpt-BACKED INTERVENTION PLAN
+# ============================================================================
+#
+# Pattern: natural-language query in, optimized plan out. The LLM never
+# invents the plan itself — it only (a) interprets which conjunctions the
+# operator cares about, and (b) narrates the plan that NVIDIA cuOpt already
+# solved via InterventionOptimizer.network_flow_optimize(). This keeps
+# fabricated-number risk out of the loop: every delta-v figure the operator
+# sees traces back to a real MILP solution, not the LLM's imagination.
+
+_RISK_LEVEL_PC = {
+    'critical': 1e-4,
+    'high': 1e-5,
+    'moderate': 1e-6,
+    'medium': 1e-6,
+    'low': 0.0,
+    'all': 0.0,
+}
+
+
+def _filter_conjunctions_for_query(conjunctions: List[Conjunction], query: str) -> List[Conjunction]:
+    """
+    Lightweight keyword-based filter translating an operator's natural
+    language query into a Pc threshold on the conjunction list.
+
+    This is intentionally simple (no LLM round-trip needed to pick a
+    threshold): it looks for risk-level keywords ("critical", "high",
+    etc.) in the query and otherwise defaults to all active conjunctions.
+    """
+    q = query.lower()
+    threshold = 0.0
+    for keyword, pc in _RISK_LEVEL_PC.items():
+        if keyword in q:
+            threshold = max(threshold, pc)
+
+    filtered = [c for c in conjunctions if c.probability_of_collision >= threshold]
+    return filtered if filtered else list(conjunctions)
+
+
+def plan_intervention_from_query(spacecraft_list: List[Spacecraft],
+                                  conjunctions: List[Conjunction],
+                                  query: str) -> Dict:
+    """
+    Answer a natural-language planning query with a cuOpt-backed, minimum-
+    fuel intervention plan.
+
+    Example
+    -------
+    >>> plan_intervention_from_query(
+    ...     spacecraft_list, conjunctions,
+    ...     "What's the minimum-fuel plan to resolve today's critical conjunctions?"
+    ... )
+
+    Pipeline:
+    1. Interpret the query into a conjunction subset (risk-level keywords).
+    2. Solve the constrained assignment problem for that subset via
+       NVIDIA cuOpt (InterventionOptimizer.network_flow_optimize, an
+       LP/MILP formulation — see risk_optimizer.py / cuopt_client.py).
+    3. Ask the LLM to narrate the *already-solved* plan in plain English,
+       grounded strictly in the solver's own numbers.
+
+    Parameters
+    ----------
+    spacecraft_list : list of Spacecraft
+        All spacecraft (maneuverable and not)
+    conjunctions : list of Conjunction
+        All active conjunctions to consider
+    query : str
+        Operator's natural-language request
+
+    Returns
+    -------
+    dict
+        status, query, considered_conjunctions, maneuvers (structured),
+        total_fuel_cost_ms, resolved / unresolved conjunction ids, and
+        an LLM narration of the plan.
+    """
+    relevant = _filter_conjunctions_for_query(conjunctions, query)
+
+    if not relevant:
+        return {
+            'status': 'success',
+            'query': query,
+            'considered_conjunctions': 0,
+            'maneuvers': [],
+            'total_fuel_cost_ms': 0.0,
+            'resolved_conjunction_ids': [],
+            'narration': "No conjunctions matched this query — nothing to plan.",
+        }
+
+    optimizer = InterventionOptimizer(spacecraft_list, relevant)
+    plan: InterventionPlan = optimizer.network_flow_optimize()
+
+    resolved_ids = set(plan.conjunctions_resolved)
+    all_ids = {f"{c.obj1_id}_{c.obj2_id}_{c.tca:.0f}" for c in relevant}
+    unresolved_ids = sorted(all_ids - resolved_ids)
+
+    maneuver_summaries = [
+        {
+            'spacecraft_id': m.spacecraft_id,
+            'target_conjunction_id': m.target_conjunction_id,
+            'time_hours': float(m.time / 3600.0),
+            'fuel_cost_ms': float(m.fuel_cost),
+        }
+        for m in plan.maneuvers
+    ]
+
+    solver_output = f"""SOLVER OUTPUT (NVIDIA cuOpt LP/MILP, ground truth — do not alter these numbers):
+- Conjunctions considered: {len(relevant)}
+- Conjunctions resolved: {len(resolved_ids)}
+- Conjunctions left unresolved: {len(unresolved_ids)}
+- Total fuel cost: {plan.total_fuel_cost_ms:.2f} m/s
+- Maneuvers:
+{chr(10).join(f"  * {m['spacecraft_id']} -> {m['target_conjunction_id']}: {m['fuel_cost_ms']:.2f} m/s at T+{m['time_hours']:.1f}h" for m in maneuver_summaries) or "  (none — no feasible maneuver found)"}
+- Unresolved conjunction IDs: {', '.join(unresolved_ids) if unresolved_ids else 'none'}
+
+OPERATOR QUERY: "{query}\""""
+
+    try:
+        narration = _chat(SYSTEM_PROMPT_PLANNER, solver_output, temperature=0.2, max_tokens=600)
+        status = 'success'
+    except Exception as e:
+        narration = None
+        status = 'partial'
+        error = str(e)
+
+    result = {
+        'status': status,
+        'query': query,
+        'considered_conjunctions': len(relevant),
+        'maneuvers': maneuver_summaries,
+        'total_fuel_cost_ms': float(plan.total_fuel_cost_ms),
+        'resolved_conjunction_ids': sorted(resolved_ids),
+        'unresolved_conjunction_ids': unresolved_ids,
+        'narration': narration,
+    }
+    if status == 'partial':
+        result['error'] = error
+    return result
 
 
 # ============================================================================

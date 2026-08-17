@@ -1371,6 +1371,7 @@ async function runFullSimulation() {
 
         rebuildScene();
         populateDashboard();
+        loadOrbits3dInline();
 
         status.textContent = 'COMPLETE';
         status.className = 'sim-status-badge complete';
@@ -1438,9 +1439,8 @@ function initOrbits3dModal() {
     const closeBtn = document.getElementById('orbits3d-close');
     const img = document.getElementById('orbits3d-img');
     const emptyMsg = document.getElementById('orbits3d-empty');
-    if (!btn || !modal) return;
 
-    btn.addEventListener('click', () => {
+    const openModal = () => {
         // Cache-bust so the latest regenerated PNG is always shown
         img.classList.remove('hidden');
         emptyMsg.classList.add('hidden');
@@ -1450,16 +1450,42 @@ function initOrbits3dModal() {
         };
         img.src = `/orbits_3d.png?t=${Date.now()}`;
         modal.classList.remove('hidden');
-    });
+    };
 
-    const close = () => modal.classList.add('hidden');
-    closeBtn.addEventListener('click', close);
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) close();
-    });
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
-    });
+    if (btn && modal) {
+        btn.addEventListener('click', openModal);
+
+        const close = () => modal.classList.add('hidden');
+        closeBtn.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
+        });
+    }
+
+    // Inline thumbnail in the right panel: loads on init, refreshes after
+    // a full simulation run, and clicking it opens the same full-size modal.
+    const inlineWrap = document.getElementById('orbits3d-inline-wrap');
+    if (inlineWrap) {
+        inlineWrap.addEventListener('click', openModal);
+    }
+    loadOrbits3dInline();
+}
+
+function loadOrbits3dInline() {
+    const img = document.getElementById('orbits3d-inline-img');
+    const emptyMsg = document.getElementById('orbits3d-inline-empty');
+    if (!img) return;
+
+    img.classList.remove('hidden');
+    emptyMsg.classList.add('hidden');
+    img.onerror = () => {
+        img.classList.add('hidden');
+        emptyMsg.classList.remove('hidden');
+    };
+    img.src = `/orbits_3d.png?t=${Date.now()}`;
 }
 
 // ============================================================================

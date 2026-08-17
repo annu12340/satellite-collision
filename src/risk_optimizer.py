@@ -18,6 +18,7 @@ Implements:
 
 import numpy as np
 import networkx as nx
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Set
 from copy import deepcopy
@@ -35,6 +36,20 @@ from .avoidance import (
     ManeuverDecision, design_avoidance_maneuver, apply_maneuver,
     evaluate_maneuver, plan_avoidance_campaign
 )
+from .cuopt_client import CuOptClient, CuOptUnavailableError
+
+
+# Module-level cuOpt client singleton. Configure via CUOPT_SERVER_IP /
+# CUOPT_SERVER_PORT env vars to point at a self-hosted GPU cuOpt server;
+# otherwise problems are solved with the local MILP fallback.
+_cuopt_client: Optional[CuOptClient] = None
+
+
+def get_cuopt_client() -> CuOptClient:
+    global _cuopt_client
+    if _cuopt_client is None:
+        _cuopt_client = CuOptClient()
+    return _cuopt_client
 
 
 # ============================================================================
@@ -517,83 +532,191 @@ class InterventionOptimizer:
 
         return plan
 
+    def _build_intervention_candidates(self) -> List[Dict]:
+        """
+        Build the candidate (conjunction, maneuvering spacecraft) pairs that
+        feed the cuOpt MILP formulation in `network_flow_optimize`.
+
+        Each candidate represents "spacecraft `sc` could execute a maneuver
+        to resolve conjunction `conj`", with a real Δv/fuel cost computed
+        via the STM-based maneuver design used elsewhere in the pipeline
+        (`design_avoidance_maneuver`).
+
+        Returns
+        -------
+        list of dict
+            Each entry: {conj_idx, conj, spacecraft_id, target_id, maneuver}
+        """
+        candidates = []
+        for i, conj in enumerate(self.conjunctions):
+            for sc_id, other_id in [(conj.obj1_id, conj.obj2_id),
+                                     (conj.obj2_id, conj.obj1_id)]:
+                sc = self.spacecraft.get(sc_id)
+                other = self.spacecraft.get(other_id)
+                if not sc or not other or not sc.maneuverable:
+                    continue
+
+                fuel_remaining = sc.delta_v_budget - sc.delta_v_used
+                if fuel_remaining <= 1e-6:
+                    continue
+
+                maneuver = design_avoidance_maneuver(sc, other, conj)
+                if maneuver is None or maneuver.fuel_cost <= 0:
+                    continue
+
+                candidates.append({
+                    'conj_idx': i,
+                    'conj': conj,
+                    'spacecraft_id': sc_id,
+                    'target_id': other_id,
+                    'maneuver': maneuver,
+                })
+
+        return candidates
+
     def network_flow_optimize(self) -> InterventionPlan:
         """
-        Graph-based optimization using minimum-cost network flow.
+        Constrained-assignment optimization using NVIDIA cuOpt (LP/MILP).
 
-        Formulation:
-        - Source: risk (collision probability to be "absorbed")
-        - Sink: safety (risk successfully mitigated)
-        - Edges: maneuver options with costs (fuel) and capacities (Δv budgets)
+        Formulation (fleet-assignment-with-capacity, the natural cuOpt MILP
+        analogue of the intervention-scheduling problem — see cuopt_client.py):
 
-        Minimizes total fuel expenditure subject to risk reduction constraints.
+            fleet          = maneuverable spacecraft
+            capacity       = remaining Δv budget [m/s]
+            tasks          = conjunctions to resolve
+            task "cost"    = Δv required for a given spacecraft to resolve it
+
+        Binary decision variable x_{i,sc} = 1 iff spacecraft `sc` maneuvers
+        to resolve conjunction `i`.
+
+            minimize   Σ (fuel_norm_k − risk_norm_k) · x_k
+            subject to Σ_sc x_{i,sc} ≤ 1                for every conjunction i
+                       Σ_i fuel_cost_{i,sc} · x_{i,sc} ≤ fuel_budget_sc   for every spacecraft sc
+                       x_k ∈ {0, 1}
+
+        This is a direct LP/MILP replacement for the previous NetworkX
+        max-flow approximation: the fuel-budget constraint is the capacity
+        constraint, and the "one maneuverer per conjunction" constraint is
+        the assignment constraint. Falls back to `greedy_optimize` if no
+        candidate can be built (e.g. no maneuverable spacecraft available).
         """
         plan = InterventionPlan()
         plan.risk_state_before = self.compute_risk_state()
 
-        # Build flow network
-        G = nx.DiGraph()
-
-        # Source and sink
-        G.add_node('source')
-        G.add_node('sink')
-
-        # For each conjunction: source → conjunction node (capacity = risk to mitigate)
-        for i, conj in enumerate(self.conjunctions):
-            conj_node = f"conj_{i}"
-            G.add_edge('source', conj_node, capacity=conj.risk_score, weight=0)
-
-            # For each maneuverable spacecraft involved:
-            # conjunction → spacecraft → sink (capacity = fuel, cost = Δv needed)
-            for sc_id in [conj.obj1_id, conj.obj2_id]:
-                sc = self.spacecraft.get(sc_id)
-                if sc and sc.maneuverable:
-                    sc_node = f"sc_{sc_id}"
-                    fuel = sc.delta_v_budget - sc.delta_v_used
-
-                    # Edge: conjunction → spacecraft (can this SC resolve this conj?)
-                    # Cost proportional to estimated Δv needed
-                    estimated_dv = 0.01  # km/s rough estimate
-                    G.add_edge(conj_node, sc_node,
-                              capacity=conj.risk_score,
-                              weight=estimated_dv * 1000)  # Convert to m/s cost
-
-                    # Edge: spacecraft → sink (limited by fuel)
-                    if not G.has_edge(sc_node, 'sink'):
-                        G.add_edge(sc_node, 'sink', capacity=fuel, weight=0)
-
-        # Solve minimum cost flow (approximate via greedy matching)
-        # Full min-cost flow would use nx.min_cost_flow, but we need a feasible flow first
-        try:
-            # Use maximum flow as upper bound on what we can resolve
-            flow_value, flow_dict = nx.maximum_flow(G, 'source', 'sink')
-
-            # Extract maneuver assignments from flow
-            for conj_node, targets in flow_dict.items():
-                if not conj_node.startswith('conj_'):
-                    continue
-
-                conj_idx = int(conj_node.split('_')[1])
-                conj = self.conjunctions[conj_idx]
-
-                for sc_node, flow in targets.items():
-                    if flow > 0 and sc_node.startswith('sc_'):
-                        sc_id = sc_node[3:]  # Remove 'sc_' prefix
-                        sc = self.spacecraft.get(sc_id)
-                        if sc:
-                            other_id = (conj.obj2_id if conj.obj1_id == sc_id
-                                       else conj.obj1_id)
-                            other = self.spacecraft.get(other_id)
-                            if other:
-                                maneuver = design_avoidance_maneuver(sc, other, conj)
-                                if maneuver:
-                                    plan.maneuvers.append(maneuver)
-                                    plan.total_fuel_cost_ms += maneuver.fuel_cost
-                                    break  # One spacecraft per conjunction
-
-        except (nx.NetworkXError, nx.NetworkXUnfeasible):
-            # Fall back to greedy if flow optimization fails
+        candidates = self._build_intervention_candidates()
+        if not candidates:
             return self.greedy_optimize()
+
+        n = len(candidates)
+
+        # --- Objective: normalize risk and fuel cost onto comparable scales ---
+        risk_scores = np.array([c['conj'].risk_score for c in candidates])
+        fuel_costs = np.array([c['maneuver'].fuel_cost for c in candidates])
+        max_risk = max(risk_scores.max(), 1e-12)
+        max_fuel = max(fuel_costs.max(), 1e-12)
+        objective_coeffs = (fuel_costs / max_fuel) - (risk_scores / max_risk)
+
+        # --- Constraint rows ---
+        row_indices: List[int] = []
+        col_indices: List[int] = []
+        values: List[float] = []
+        row_upper: List[float] = []
+        row_lower: List[float] = []
+        row = 0
+
+        # (A) Assignment constraint: at most one maneuverer per conjunction
+        by_conj: Dict[int, List[int]] = defaultdict(list)
+        for k, cand in enumerate(candidates):
+            by_conj[cand['conj_idx']].append(k)
+
+        for conj_idx, col_list in by_conj.items():
+            for k in col_list:
+                row_indices.append(row)
+                col_indices.append(k)
+                values.append(1.0)
+            row_upper.append(1.0)
+            row_lower.append('ninf')
+            row += 1
+
+        # (B) Capacity constraint: total Δv spent per spacecraft ≤ fuel budget
+        by_sc: Dict[str, List[int]] = defaultdict(list)
+        for k, cand in enumerate(candidates):
+            by_sc[cand['spacecraft_id']].append(k)
+
+        for sc_id, col_list in by_sc.items():
+            sc = self.spacecraft[sc_id]
+            fuel_budget = sc.delta_v_budget - sc.delta_v_used
+            for k in col_list:
+                row_indices.append(row)
+                col_indices.append(k)
+                values.append(float(candidates[k]['maneuver'].fuel_cost))
+            row_upper.append(float(fuel_budget))
+            row_lower.append('ninf')
+            row += 1
+
+        # Build CSR offsets from (row, col, value) triplets
+        n_rows = row
+        rows_cols = defaultdict(list)
+        for r, c, v in zip(row_indices, col_indices, values):
+            rows_cols[r].append((c, v))
+
+        offsets = [0]
+        csr_indices: List[int] = []
+        csr_values: List[float] = []
+        for r in range(n_rows):
+            for c, v in rows_cols.get(r, []):
+                csr_indices.append(c)
+                csr_values.append(v)
+            offsets.append(len(csr_indices))
+
+        problem_data = {
+            'csr_constraint_matrix': {
+                'offsets': offsets,
+                'indices': csr_indices,
+                'values': csr_values,
+            },
+            'constraint_bounds': {
+                'upper_bounds': row_upper,
+                'lower_bounds': row_lower,
+            },
+            'objective_data': {
+                'coefficients': objective_coeffs.tolist(),
+                'scalability_factor': 1.0,
+                'offset': 0.0,
+            },
+            'variable_bounds': {
+                'upper_bounds': [1.0] * n,
+                'lower_bounds': [0.0] * n,
+            },
+            'variable_names': [f"x_{k}" for k in range(n)],
+            'variable_types': ['I'] * n,
+            'maximize': False,
+            'solver_config': {'time_limit': 10},
+        }
+
+        try:
+            client = get_cuopt_client()
+            solution = client.solve_milp(problem_data, time_limit=10.0)
+        except CuOptUnavailableError:
+            return self.greedy_optimize()
+
+        selected = {
+            int(name.split('_')[1])
+            for name, val in solution.get('vars', {}).items()
+            if val >= 0.5
+        }
+
+        for k in selected:
+            cand = candidates[k]
+            plan.maneuvers.append(cand['maneuver'])
+            plan.total_fuel_cost_ms += cand['maneuver'].fuel_cost
+            plan.conjunctions_resolved.append(
+                f"{cand['conj'].obj1_id}_{cand['conj'].obj2_id}_{cand['conj'].tca:.0f}"
+            )
+
+        plan.expected_risk_reduction = sum(
+            candidates[k]['conj'].risk_score for k in selected
+        )
 
         return plan
 
