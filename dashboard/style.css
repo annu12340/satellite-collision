@@ -1531,32 +1531,68 @@ body {
 }
 
 /* ============================================================================
-   ORBITS 3D INLINE THUMBNAIL (right panel)
+   ORBITS 3D LIVE PLOT (right panel + enlarged modal)
    ============================================================================ */
+
+.orbits3d-expand-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    width: 20px;
+    height: 20px;
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.orbits3d-expand-btn:hover {
+    color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    background: rgba(0, 212, 255, 0.08);
+}
 
 .orbits3d-inline-wrap {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     overflow: hidden;
-    cursor: pointer;
-    background: var(--bg-card);
+    background: var(--bg-primary);
     transition: border-color 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 60px;
+    position: relative;
+    min-height: 220px;
 }
 
 .orbits3d-inline-wrap:hover {
     border-color: var(--border-glow);
 }
 
-.orbits3d-inline-wrap img {
+#orbits3d-plotly {
     width: 100%;
-    display: block;
+    height: 220px;
 }
 
 .orbits3d-inline-wrap .modal-empty {
     padding: 16px;
     font-size: 0.65rem;
+}
+
+.modal-box-large {
+    max-width: min(92vw, 1300px);
+}
+
+.modal-body-plot {
+    padding: 8px;
+    display: block;
+    width: min(88vw, 1250px);
+    height: 78vh;
+}
+
+#orbits3d-plotly-modal {
+    width: 100%;
+    height: 100%;
 }

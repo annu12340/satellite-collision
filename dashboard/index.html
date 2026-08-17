@@ -374,12 +374,13 @@
                 <div class="panel-section">
                     <h3 class="section-title">
                         <span class="title-icon">&#127760;</span>
-                        Orbital Configuration (3D Plot)
+                        Orbital Configuration (Live 3D)
+                        <button id="orbits3d-expand-btn" class="orbits3d-expand-btn" title="Enlarge">&#x26F6;</button>
                     </h3>
-                    <div class="orbits3d-inline-wrap" id="orbits3d-inline-wrap" title="Click to enlarge">
-                        <img id="orbits3d-inline-img" src="" alt="3D plot of spacecraft orbits, conjunctions, and maneuvers" class="hidden">
+                    <div class="orbits3d-inline-wrap" id="orbits3d-inline-wrap">
+                        <div id="orbits3d-plotly"></div>
                         <p id="orbits3d-inline-empty" class="modal-empty hidden">
-                            No orbits_3d.png found yet. Click "RUN SIMULATION" to generate one.
+                            No orbital data yet. Click "RUN SIMULATION" to generate it.
                         </p>
                     </div>
                 </div>
@@ -426,18 +427,15 @@
         </div>
     </div>
 
-    <!-- Orbits 3D Plot Modal -->
+    <!-- Orbits 3D Plot Modal (enlarged live view) -->
     <div id="orbits3d-modal" class="modal-overlay hidden">
-        <div class="modal-box">
+        <div class="modal-box modal-box-large">
             <div class="modal-header">
-                <span>&#127760; Orbital Configuration (3D Plot)</span>
+                <span>&#127760; Orbital Configuration (Live 3D)</span>
                 <button id="orbits3d-close" class="modal-close" aria-label="Close">&times;</button>
             </div>
-            <div class="modal-body">
-                <img id="orbits3d-img" src="" alt="3D plot of spacecraft orbits, conjunctions, and maneuvers">
-                <p id="orbits3d-empty" class="modal-empty hidden">
-                    No orbits_3d.png found yet. Click "RUN SIMULATION" to generate one.
-                </p>
+            <div class="modal-body modal-body-plot">
+                <div id="orbits3d-plotly-modal"></div>
             </div>
         </div>
     </div>
@@ -445,6 +443,8 @@
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Plotly for the live, rotatable orbital configuration plot -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

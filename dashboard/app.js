@@ -101,7 +101,7 @@ async function init() {
     initSimulationPanel();
     initChartTabs();
     initFullSimulationControl();
-    initOrbits3dModal();
+    initOrbits3dPanel();
     drawTelemetryChart();
 
     setInterval(updateClock, 1000);
@@ -1371,7 +1371,7 @@ async function runFullSimulation() {
 
         rebuildScene();
         populateDashboard();
-        loadOrbits3dInline();
+        refreshOrbits3dPanel();
 
         status.textContent = 'COMPLETE';
         status.className = 'sim-status-badge complete';
@@ -1430,62 +1430,261 @@ function rebuildScene() {
 }
 
 // ============================================================================
-// ORBITS 3D MODAL (matplotlib plot viewer)
+// ORBITS 3D LIVE PLOT (Plotly.js) - dynamic, dark-themed, rotatable
+// replacement for the old static matplotlib PNG preview.
 // ============================================================================
 
-function initOrbits3dModal() {
-    const btn = document.getElementById('btn-view-orbits3d');
-    const modal = document.getElementById('orbits3d-modal');
-    const closeBtn = document.getElementById('orbits3d-close');
-    const img = document.getElementById('orbits3d-img');
-    const emptyMsg = document.getElementById('orbits3d-empty');
+const ORBITS3D_COLORS = {
+    COMSAT: '#00d4ff',
+    EOS: '#7b2ff7',
+    CUBE: '#06ffd0',
+    DEBRIS: '#ff6b6b',
+};
 
-    const openModal = () => {
-        // Cache-bust so the latest regenerated PNG is always shown
-        img.classList.remove('hidden');
-        emptyMsg.classList.add('hidden');
-        img.onerror = () => {
-            img.classList.add('hidden');
-            emptyMsg.classList.remove('hidden');
-        };
-        img.src = `/orbits_3d.png?t=${Date.now()}`;
-        modal.classList.remove('hidden');
+const ORBITS3D_LABELS = {
+    COMSAT: 'Communication Sats',
+    EOS: 'Earth Observation',
+    CUBE: 'CubeSats',
+    DEBRIS: 'Debris/Defunct',
+};
+
+let orbits3dAutoRotateTimer = null;
+
+/** Dark-themed Earth sphere as a Plotly surface trace, in km (same units as spacecraft positions). */
+function buildEarthSurfaceTrace() {
+    const R = 6378.137;
+    const steps = 26;
+    const x = [], y = [], z = [];
+    for (let i = 0; i <= steps; i++) {
+        const v = Math.PI * i / steps;
+        const xRow = [], yRow = [], zRow = [];
+        for (let j = 0; j <= steps; j++) {
+            const u = 2 * Math.PI * j / steps;
+            xRow.push(R * Math.cos(u) * Math.sin(v));
+            yRow.push(R * Math.sin(u) * Math.sin(v));
+            zRow.push(R * Math.cos(v));
+        }
+        x.push(xRow); y.push(yRow); z.push(zRow);
+    }
+    return {
+        type: 'surface',
+        x, y, z,
+        colorscale: [[0, '#0d3f8a'], [1, '#0d3f8a']],
+        showscale: false,
+        opacity: 0.55,
+        hoverinfo: 'skip',
+        lighting: { ambient: 0.65, diffuse: 0.35, specular: 0.1 },
+        contours: { x: { highlight: false }, y: { highlight: false }, z: { highlight: false } },
     };
-
-    if (btn && modal) {
-        btn.addEventListener('click', openModal);
-
-        const close = () => modal.classList.add('hidden');
-        closeBtn.addEventListener('click', close);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) close();
-        });
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
-        });
-    }
-
-    // Inline thumbnail in the right panel: loads on init, refreshes after
-    // a full simulation run, and clicking it opens the same full-size modal.
-    const inlineWrap = document.getElementById('orbits3d-inline-wrap');
-    if (inlineWrap) {
-        inlineWrap.addEventListener('click', openModal);
-    }
-    loadOrbits3dInline();
 }
 
-function loadOrbits3dInline() {
-    const img = document.getElementById('orbits3d-inline-img');
-    const emptyMsg = document.getElementById('orbits3d-inline-empty');
-    if (!img) return;
+/** Build all Plotly traces (Earth, orbit paths, current positions, conjunctions) from live simData. */
+function buildOrbits3dTraces() {
+    if (!simData || !simData.spacecraft || simData.spacecraft.length === 0) return [];
 
-    img.classList.remove('hidden');
-    emptyMsg.classList.add('hidden');
-    img.onerror = () => {
-        img.classList.add('hidden');
-        emptyMsg.classList.remove('hidden');
+    const traces = [buildEarthSurfaceTrace()];
+
+    // Orbit path lines, grouped per spacecraft type into one trace each
+    // (nulls break the line between individual satellites within a group).
+    const pathsByType = {};
+    simData.spacecraft.forEach(sc => {
+        const type = sc.type || (sc.id || '').split('_')[0];
+        if (!sc.orbit_path || sc.orbit_path.length < 2) return;
+        if (!pathsByType[type]) pathsByType[type] = { x: [], y: [], z: [] };
+        sc.orbit_path.forEach(p => {
+            pathsByType[type].x.push(p[0]);
+            pathsByType[type].y.push(p[1]);
+            pathsByType[type].z.push(p[2]);
+        });
+        pathsByType[type].x.push(null);
+        pathsByType[type].y.push(null);
+        pathsByType[type].z.push(null);
+    });
+
+    Object.keys(pathsByType).forEach(type => {
+        traces.push({
+            type: 'scatter3d',
+            mode: 'lines',
+            x: pathsByType[type].x, y: pathsByType[type].y, z: pathsByType[type].z,
+            line: { color: ORBITS3D_COLORS[type] || '#8b9cc0', width: 1.5 },
+            opacity: 0.45,
+            name: ORBITS3D_LABELS[type] || type,
+            hoverinfo: 'skip',
+        });
+    });
+
+    // Current spacecraft positions
+    const posByType = {};
+    simData.spacecraft.forEach(sc => {
+        const type = sc.type || (sc.id || '').split('_')[0];
+        if (!posByType[type]) posByType[type] = { x: [], y: [], z: [], text: [] };
+        posByType[type].x.push(sc.position[0]);
+        posByType[type].y.push(sc.position[1]);
+        posByType[type].z.push(sc.position[2]);
+        posByType[type].text.push(`${sc.name || sc.id}<br>Alt: ${sc.altitude_km.toFixed(0)} km`);
+    });
+
+    Object.keys(posByType).forEach(type => {
+        traces.push({
+            type: 'scatter3d',
+            mode: 'markers',
+            x: posByType[type].x, y: posByType[type].y, z: posByType[type].z,
+            text: posByType[type].text,
+            hoverinfo: 'text',
+            marker: { size: 3, color: ORBITS3D_COLORS[type] || '#8b9cc0' },
+            name: ORBITS3D_LABELS[type] || type,
+            showlegend: false,
+        });
+    });
+
+    // Conjunction highlight lines + midpoint markers
+    if (simData.conjunctions && simData.conjunctions.length > 0) {
+        const cx = [], cy = [], cz = [];
+        const mx = [], my = [], mz = [];
+        simData.conjunctions.forEach(conj => {
+            cx.push(conj.obj1_pos[0], conj.obj2_pos[0], null);
+            cy.push(conj.obj1_pos[1], conj.obj2_pos[1], null);
+            cz.push(conj.obj1_pos[2], conj.obj2_pos[2], null);
+            mx.push((conj.obj1_pos[0] + conj.obj2_pos[0]) / 2);
+            my.push((conj.obj1_pos[1] + conj.obj2_pos[1]) / 2);
+            mz.push((conj.obj1_pos[2] + conj.obj2_pos[2]) / 2);
+        });
+        traces.push({
+            type: 'scatter3d', mode: 'lines',
+            x: cx, y: cy, z: cz,
+            line: { color: '#ff2d55', width: 3 },
+            opacity: 0.85, name: 'Conjunction', hoverinfo: 'skip',
+        });
+        traces.push({
+            type: 'scatter3d', mode: 'markers',
+            x: mx, y: my, z: mz,
+            marker: { size: 4, color: '#ff2d55', symbol: 'x' },
+            name: 'Conjunction', showlegend: false, hoverinfo: 'skip',
+        });
+    }
+
+    return traces;
+}
+
+/** Dark-themed Plotly layout matching the dashboard's color palette. */
+function buildOrbits3dLayout() {
+    const axisStyle = {
+        title: '',
+        showbackground: true,
+        backgroundcolor: '#0f1520',
+        gridcolor: '#1e2a42',
+        zerolinecolor: '#1e2a42',
+        color: '#5a6b8a',
+        showspikes: false,
     };
-    img.src = `/orbits_3d.png?t=${Date.now()}`;
+    return {
+        paper_bgcolor: '#0a0e17',
+        plot_bgcolor: '#0a0e17',
+        margin: { l: 0, r: 0, t: 0, b: 0 },
+        showlegend: true,
+        legend: {
+            font: { color: '#8b9cc0', size: 10 },
+            bgcolor: 'rgba(15,21,32,0.65)',
+            bordercolor: '#1e2a42',
+            borderwidth: 1,
+            x: 0.01, y: 0.99,
+        },
+        scene: {
+            xaxis: axisStyle, yaxis: axisStyle, zaxis: axisStyle,
+            aspectmode: 'data',
+            bgcolor: '#0a0e17',
+            camera: { eye: { x: 1.6, y: 1.6, z: 1.0 } },
+        },
+        font: { color: '#8b9cc0' },
+    };
+}
+
+/** (Re)render the live orbits plot into the given div from current simData. Returns false if no data yet. */
+function renderOrbits3d(divId, options) {
+    const el = document.getElementById(divId);
+    if (!el || typeof Plotly === 'undefined') return false;
+
+    const traces = buildOrbits3dTraces();
+    if (traces.length === 0) return false;
+
+    const layout = buildOrbits3dLayout();
+    const config = {
+        displayModeBar: !!(options && options.showToolbar),
+        responsive: true,
+        scrollZoom: true,
+    };
+    Plotly.react(divId, traces, layout, config);
+    return true;
+}
+
+function stopOrbits3dAutoRotate() {
+    if (orbits3dAutoRotateTimer) {
+        clearInterval(orbits3dAutoRotateTimer);
+        orbits3dAutoRotateTimer = null;
+    }
+}
+
+/** Slowly orbit the camera around the plot so the preview reads as "live" at a glance. */
+function startOrbits3dAutoRotate(divId) {
+    stopOrbits3dAutoRotate();
+    let angle = Math.atan2(1.6, 1.6);
+    const radius = Math.sqrt(1.6 * 1.6 + 1.6 * 1.6);
+    orbits3dAutoRotateTimer = setInterval(() => {
+        angle += 0.006;
+        const eye = { x: radius * Math.cos(angle), y: radius * Math.sin(angle), z: 1.0 };
+        Plotly.relayout(divId, { 'scene.camera.eye': eye }).catch(() => {});
+    }, 50);
+}
+
+function initOrbits3dPanel() {
+    const btn = document.getElementById('btn-view-orbits3d');
+    const expandBtn = document.getElementById('orbits3d-expand-btn');
+    const modal = document.getElementById('orbits3d-modal');
+    const closeBtn = document.getElementById('orbits3d-close');
+    const inlineWrap = document.getElementById('orbits3d-inline-wrap');
+
+    const openModal = () => {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        // Wait a frame so the modal is visible before Plotly measures its container size
+        requestAnimationFrame(() => renderOrbits3d('orbits3d-plotly-modal', { showToolbar: true }));
+    };
+    const closeModal = () => modal && modal.classList.add('hidden');
+
+    if (btn) btn.addEventListener('click', openModal);
+    if (expandBtn) expandBtn.addEventListener('click', openModal);
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (modal) {
+        modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) closeModal();
+    });
+
+    // Stop the ambient auto-rotate as soon as the user starts interacting
+    // with the inline preview, so it doesn't fight manual dragging/zooming.
+    if (inlineWrap) {
+        inlineWrap.addEventListener('mousedown', stopOrbits3dAutoRotate, { once: true });
+        inlineWrap.addEventListener('wheel', stopOrbits3dAutoRotate, { once: true });
+        inlineWrap.addEventListener('touchstart', stopOrbits3dAutoRotate, { once: true });
+    }
+
+    refreshOrbits3dPanel();
+}
+
+/** Re-render the inline preview (and modal, if open) from the latest simData. Call after any data refresh. */
+function refreshOrbits3dPanel() {
+    const emptyMsg = document.getElementById('orbits3d-inline-empty');
+    const ok = renderOrbits3d('orbits3d-plotly', { showToolbar: false });
+    if (emptyMsg) emptyMsg.classList.toggle('hidden', ok);
+
+    stopOrbits3dAutoRotate();
+    if (ok) startOrbits3dAutoRotate('orbits3d-plotly');
+
+    const modal = document.getElementById('orbits3d-modal');
+    if (modal && !modal.classList.contains('hidden')) {
+        renderOrbits3d('orbits3d-plotly-modal', { showToolbar: true });
+    }
 }
 
 // ============================================================================
