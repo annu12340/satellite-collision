@@ -81,43 +81,7 @@
         <div class="dash-content">
             <!-- Left Panel (compact) -->
             <aside class="panel panel-left">
-                <!-- Risk Metrics (compact inline) -->
-                <div class="panel-section compact">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#9888;</span>
-                        Risk Assessment
-                    </h3>
-                    <div class="metrics-grid">
-                        <div class="metric-card critical">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-critical">--</span>
-                                <span class="metric-label">Critical</span>
-                            </div>
-                        </div>
-                        <div class="metric-card high">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-high">--</span>
-                                <span class="metric-label">High Risk</span>
-                            </div>
-                        </div>
-                        <div class="metric-card medium">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-maneuvers">--</span>
-                                <span class="metric-label">Maneuvers</span>
-                            </div>
-                        </div>
-                        <div class="metric-card info">
-                            <div class="metric-icon">&#9679;</div>
-                            <div class="metric-info">
-                                <span class="metric-value" id="m-fuel">--</span>
-                                <span class="metric-label">Fuel (m/s)</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+      
 
                 <!-- Live Telemetry (populates dynamically while a scenario runs) -->
                 <div class="panel-section telemetry-section">
@@ -197,43 +161,18 @@
                     <div class="conjunction-list" id="conjunction-list"></div>
                 </div>
 
-                <!-- Maneuver Queue -->
+                <!-- Orbital Configuration (Live 3D) - inline preview, click to enlarge -->
                 <div class="panel-section">
                     <h3 class="section-title">
-                        <span class="title-icon">&#128640;</span>
-                        Maneuver Queue
-                        <span class="sim-status-badge idle" id="maneuver-badge">IDLE</span>
+                        <span class="title-icon">&#127760;</span>
+                        Orbital Configuration (Live 3D)
+                        <button id="orbits3d-expand-btn" class="orbits3d-expand-btn" title="Enlarge">&#x26F6;</button>
                     </h3>
-                    <div class="maneuver-list" id="maneuver-list"></div>
-                </div>
-
-                <!-- Altitude Distribution -->
-                <div class="panel-section compact">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#127757;</span>
-                        Altitude Distribution
-                        <span class="sim-status-badge idle" id="altitude-badge">IDLE</span>
-                    </h3>
-                    <canvas id="altitude-chart" width="260" height="70"></canvas>
-                </div>
-
-                <!-- Kessler Index (compact) -->
-                <div class="panel-section compact">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#127776;</span>
-                        Kessler Index
-                        <span class="sim-status-badge idle" id="kessler-badge">IDLE</span>
-                    </h3>
-                    <div class="kessler-gauge compact-gauge">
-                        <div class="gauge-track">
-                            <div class="gauge-fill" id="kessler-fill"></div>
-                        </div>
-                        <div class="gauge-labels">
-                            <span>STABLE</span>
-                            <span>CRITICAL</span>
-                            <span>RUNAWAY</span>
-                        </div>
-                        <div class="gauge-value" id="kessler-value">0.00</div>
+                    <div class="orbits3d-inline-wrap" id="orbits3d-inline-wrap">
+                        <div id="orbits3d-plotly"></div>
+                        <p id="orbits3d-inline-empty" class="modal-empty hidden">
+                            No orbital data yet. Click "RUN SIMULATION" to generate it.
+                        </p>
                     </div>
                 </div>
             </aside>
@@ -368,21 +307,6 @@
                     </h3>
                     <p class="fullsim-hint">Re-runs the constellation, conjunction, and risk-projection pipeline with a new random seed, then refreshes every chart below.</p>
                     <button id="fullsim-run-btn" class="sim-btn sim-btn-play fullsim-btn">&#9851; RUN SIMULATION</button>
-                </div>
-
-                <!-- Orbital Configuration (3D Plot) - inline thumbnail, click to enlarge -->
-                <div class="panel-section">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#127760;</span>
-                        Orbital Configuration (Live 3D)
-                        <button id="orbits3d-expand-btn" class="orbits3d-expand-btn" title="Enlarge">&#x26F6;</button>
-                    </h3>
-                    <div class="orbits3d-inline-wrap" id="orbits3d-inline-wrap">
-                        <div id="orbits3d-plotly"></div>
-                        <p id="orbits3d-inline-empty" class="modal-empty hidden">
-                            No orbital data yet. Click "RUN SIMULATION" to generate it.
-                        </p>
-                    </div>
                 </div>
 
                 <!-- Risk Timeline -->

@@ -851,26 +851,8 @@ function populateDashboard() {
     // Conjunction list
     populateConjunctionList();
 
-    // Maneuver list
-    populateManeuverList();
-
-    // Kessler gauge
-    const kesslerValue = risk.critical_conjunctions * 0.15 +
-                         risk.high_risk_conjunctions * 0.05;
-    const kesslerClamped = Math.min(kesslerValue, 1.0);
-    document.getElementById('kessler-fill').style.width = (kesslerClamped * 100) + '%';
-    setTimeout(() => animateCountUp(document.getElementById('kessler-value'), kesslerClamped, { decimals: 3, duration: 1500 }), 600);
-
-    if (kesslerClamped > 0.7) {
-        document.getElementById('kessler-fill').style.background = 'var(--gradient-danger)';
-    } else if (kesslerClamped > 0.4) {
-        document.getElementById('kessler-fill').style.background =
-            'linear-gradient(90deg, #06ffd0, #ffcc00)';
-    }
-
     // Charts
     drawRiskTimeline();
-    drawAltitudeChart();
     drawRiskEvolutionChart();
     drawDebrisAnalysisChart();
     updateDebrisSummary();
@@ -899,36 +881,6 @@ function populateConjunctionList() {
             </div>
         `;
         item.addEventListener('click', () => focusOnConjunction(idx));
-        container.appendChild(item);
-    });
-}
-
-function populateManeuverList() {
-    const container = document.getElementById('maneuver-list');
-    container.innerHTML = '';
-
-    if (!simData.maneuvers || simData.maneuvers.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem;padding:8px;">No maneuvers scheduled</div>';
-        return;
-    }
-
-    simData.maneuvers.slice(0, 8).forEach(man => {
-        const item = document.createElement('div');
-        item.className = 'maneuver-item';
-        const dvMag = Math.sqrt(
-            man.delta_v_rtn_ms[0] ** 2 +
-            man.delta_v_rtn_ms[1] ** 2 +
-            man.delta_v_rtn_ms[2] ** 2
-        ).toFixed(2);
-        item.innerHTML = `
-            <div class="man-header">
-                <span class="man-sc">${man.spacecraft_id}</span>
-                <span class="man-time">T+${man.time_hours.toFixed(1)}h</span>
-            </div>
-            <div class="man-details">
-                |&Delta;v| = ${dvMag} m/s &middot; RTN [${man.delta_v_rtn_ms[0].toFixed(1)}, ${man.delta_v_rtn_ms[1].toFixed(1)}, ${man.delta_v_rtn_ms[2].toFixed(1)}]
-            </div>
-        `;
         container.appendChild(item);
     });
 }
@@ -1006,59 +958,6 @@ function drawRiskTimeline() {
     ctx.textAlign = 'right';
     ctx.fillText('0', padding.left - 4, h - padding.bottom);
     ctx.fillText(maxRisk.toExponential(0), padding.left - 4, padding.top + 8);
-}
-
-function drawAltitudeChart() {
-    const canvas = document.getElementById('altitude-chart');
-    if (!canvas || !simData.spacecraft) return;
-
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width;
-    const h = canvas.height;
-    const padding = { top: 10, right: 10, bottom: 20, left: 35 };
-
-    ctx.clearRect(0, 0, w, h);
-
-    // Create altitude histogram
-    const altitudes = simData.spacecraft.map(sc => sc.altitude_km);
-    const minAlt = Math.min(...altitudes);
-    const maxAlt = Math.max(...altitudes);
-    const bins = 15;
-    const binWidth = (maxAlt - minAlt) / bins;
-    const histogram = new Array(bins).fill(0);
-
-    altitudes.forEach(alt => {
-        const bin = Math.min(Math.floor((alt - minAlt) / binWidth), bins - 1);
-        histogram[bin]++;
-    });
-
-    const maxCount = Math.max(...histogram);
-    const plotW = w - padding.left - padding.right;
-    const plotH = h - padding.top - padding.bottom;
-    const barWidth = plotW / bins - 2;
-
-    // Draw bars
-    histogram.forEach((count, i) => {
-        const x = padding.left + (i / bins) * plotW + 1;
-        const barH = (count / maxCount) * plotH;
-        const y = padding.top + plotH - barH;
-
-        // Gradient color based on position
-        const t = i / bins;
-        const r = Math.floor(6 + t * 245);
-        const g = Math.floor(255 - t * 192);
-        const b = Math.floor(208 - t * 67);
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
-        ctx.fillRect(x, y, barWidth, barH);
-    });
-
-    // Labels
-    ctx.fillStyle = '#5a6b8a';
-    ctx.font = '9px JetBrains Mono';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${minAlt.toFixed(0)}`, padding.left, h - 4);
-    ctx.fillText(`${((minAlt + maxAlt) / 2).toFixed(0)}`, padding.left + plotW / 2, h - 4);
-    ctx.fillText(`${maxAlt.toFixed(0)}`, padding.left + plotW, h - 4);
 }
 
 // ============================================================================
@@ -1436,111 +1335,70 @@ function rebuildScene() {
 
 // ============================================================================
 // ORBITS 3D LIVE PLOT (Plotly.js) - dynamic, dark-themed, rotatable
-// replacement for the old static matplotlib PNG preview.
+// replacement for the old static matplotlib PNG preview. Shows only the
+// red/danger elements: debris orbits and conjunctions.
 // ============================================================================
-
-const ORBITS3D_COLORS = {
-    COMSAT: '#00d4ff',
-    EOS: '#7b2ff7',
-    CUBE: '#06ffd0',
-    DEBRIS: '#ff6b6b',
-};
-
-const ORBITS3D_LABELS = {
-    COMSAT: 'Communication Sats',
-    EOS: 'Earth Observation',
-    CUBE: 'CubeSats',
-    DEBRIS: 'Debris/Defunct',
-};
 
 let orbits3dAutoRotateTimer = null;
 
-/** Dark-themed Earth sphere as a Plotly surface trace, in km (same units as spacecraft positions). */
-function buildEarthSurfaceTrace() {
-    const R = 6378.137;
-    const steps = 26;
-    const x = [], y = [], z = [];
-    for (let i = 0; i <= steps; i++) {
-        const v = Math.PI * i / steps;
-        const xRow = [], yRow = [], zRow = [];
-        for (let j = 0; j <= steps; j++) {
-            const u = 2 * Math.PI * j / steps;
-            xRow.push(R * Math.cos(u) * Math.sin(v));
-            yRow.push(R * Math.sin(u) * Math.sin(v));
-            zRow.push(R * Math.cos(v));
-        }
-        x.push(xRow); y.push(yRow); z.push(zRow);
-    }
-    return {
-        type: 'surface',
-        x, y, z,
-        colorscale: [[0, '#0d3f8a'], [1, '#0d3f8a']],
-        showscale: false,
-        opacity: 0.55,
-        hoverinfo: 'skip',
-        lighting: { ambient: 0.65, diffuse: 0.35, specular: 0.1 },
-        contours: { x: { highlight: false }, y: { highlight: false }, z: { highlight: false } },
-    };
-}
-
-/** Build all Plotly traces (Earth, orbit paths, current positions, conjunctions) from live simData. */
+/** Build Plotly traces showing only the red (danger) elements: debris orbits/positions and conjunctions. */
 function buildOrbits3dTraces() {
     if (!simData || !simData.spacecraft || simData.spacecraft.length === 0) return [];
 
-    const traces = [buildEarthSurfaceTrace()];
+    const traces = [];
 
-    // Orbit path lines, grouped per spacecraft type into one trace each
-    // (nulls break the line between individual satellites within a group).
-    const pathsByType = {};
+    // Debris orbit path lines (single red trace, nulls break the line
+    // between individual debris objects).
+    const debrisPath = { x: [], y: [], z: [] };
     simData.spacecraft.forEach(sc => {
         const type = sc.type || (sc.id || '').split('_')[0];
+        if (type !== 'DEBRIS') return;
         if (!sc.orbit_path || sc.orbit_path.length < 2) return;
-        if (!pathsByType[type]) pathsByType[type] = { x: [], y: [], z: [] };
         sc.orbit_path.forEach(p => {
-            pathsByType[type].x.push(p[0]);
-            pathsByType[type].y.push(p[1]);
-            pathsByType[type].z.push(p[2]);
+            debrisPath.x.push(p[0]);
+            debrisPath.y.push(p[1]);
+            debrisPath.z.push(p[2]);
         });
-        pathsByType[type].x.push(null);
-        pathsByType[type].y.push(null);
-        pathsByType[type].z.push(null);
+        debrisPath.x.push(null);
+        debrisPath.y.push(null);
+        debrisPath.z.push(null);
     });
 
-    Object.keys(pathsByType).forEach(type => {
+    if (debrisPath.x.length > 0) {
         traces.push({
             type: 'scatter3d',
             mode: 'lines',
-            x: pathsByType[type].x, y: pathsByType[type].y, z: pathsByType[type].z,
-            line: { color: ORBITS3D_COLORS[type] || '#8b9cc0', width: 1.5 },
-            opacity: 0.45,
-            name: ORBITS3D_LABELS[type] || type,
+            x: debrisPath.x, y: debrisPath.y, z: debrisPath.z,
+            line: { color: '#ff6b6b', width: 1.5 },
+            opacity: 0.5,
+            name: 'Debris/Defunct',
             hoverinfo: 'skip',
         });
-    });
+    }
 
-    // Current spacecraft positions
-    const posByType = {};
+    // Current debris positions
+    const debrisPos = { x: [], y: [], z: [], text: [] };
     simData.spacecraft.forEach(sc => {
         const type = sc.type || (sc.id || '').split('_')[0];
-        if (!posByType[type]) posByType[type] = { x: [], y: [], z: [], text: [] };
-        posByType[type].x.push(sc.position[0]);
-        posByType[type].y.push(sc.position[1]);
-        posByType[type].z.push(sc.position[2]);
-        posByType[type].text.push(`${sc.name || sc.id}<br>Alt: ${sc.altitude_km.toFixed(0)} km`);
+        if (type !== 'DEBRIS') return;
+        debrisPos.x.push(sc.position[0]);
+        debrisPos.y.push(sc.position[1]);
+        debrisPos.z.push(sc.position[2]);
+        debrisPos.text.push(`${sc.name || sc.id}<br>Alt: ${sc.altitude_km.toFixed(0)} km`);
     });
 
-    Object.keys(posByType).forEach(type => {
+    if (debrisPos.x.length > 0) {
         traces.push({
             type: 'scatter3d',
             mode: 'markers',
-            x: posByType[type].x, y: posByType[type].y, z: posByType[type].z,
-            text: posByType[type].text,
+            x: debrisPos.x, y: debrisPos.y, z: debrisPos.z,
+            text: debrisPos.text,
             hoverinfo: 'text',
-            marker: { size: 3, color: ORBITS3D_COLORS[type] || '#8b9cc0' },
-            name: ORBITS3D_LABELS[type] || type,
+            marker: { size: 3, color: '#ff6b6b' },
+            name: 'Debris/Defunct',
             showlegend: false,
         });
-    });
+    }
 
     // Conjunction highlight lines + midpoint markers
     if (simData.conjunctions && simData.conjunctions.length > 0) {
