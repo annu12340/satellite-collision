@@ -109,6 +109,7 @@ async function init() {
     setupControls();
     setupInteraction();
     initSimulationPanel();
+    initDecisionEngine();
     initChartTabs();
     initFullSimulationControl();
     initOrbits3dPanel();
