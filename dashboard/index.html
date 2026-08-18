@@ -125,6 +125,37 @@
                     <div class="telemetry-hint" id="telemetry-hint">Run a scenario (Live Events panel) to see live range telemetry</div>
                 </div>
 
+                <!-- Live B-Plane Encounter Geometry -->
+                <div class="panel-section bplane-section">
+                    <h3 class="section-title">
+                        <span class="title-icon">&#127919;</span>
+                        B-Plane Encounter Geometry
+                        <span class="sim-status-badge idle" id="bplane-badge">IDLE</span>
+                    </h3>
+                    <canvas id="bplane-chart" width="260" height="220"></canvas>
+                    <div class="bplane-readout">
+                        <div class="bplane-stat">
+                            <span class="bplane-label">Miss (&xi;,&zeta;)</span>
+                            <span class="bplane-value" id="bplane-miss">-- , -- km</span>
+                        </div>
+                        <div class="bplane-stat">
+                            <span class="bplane-label">3&sigma; ellipse</span>
+                            <span class="bplane-value" id="bplane-ellipse">-- &times; -- km</span>
+                        </div>
+                        <div class="bplane-stat">
+                            <span class="bplane-label">Combined HBR</span>
+                            <span class="bplane-value" id="bplane-hbr">-- m</span>
+                        </div>
+                        <div class="bplane-stat">
+                            <span class="bplane-label">P<sub>c</sub> estimate</span>
+                            <span class="bplane-value" id="bplane-pc">--</span>
+                        </div>
+                    </div>
+                    <div class="bplane-hint" id="bplane-hint">
+                        The encounter-plane geometry conjunction assessment is built on: hard-body-radius circle, covariance ellipse, and miss-distance vector, updating live as the avoidance burn executes.
+                    </div>
+                </div>
+
                 <!-- Catastrophic Threshold Gauge -->
                 <div class="panel-section catastrophic-section">
                     <h3 class="section-title">

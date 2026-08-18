@@ -729,6 +729,55 @@ function createConjunctions() {
             criticalMarker.userData = { type: 'conjunction_critical_marker', isRotating: true };
             conjGroup.add(criticalMarker);
 
+            // 5. TCA Zone: Semi-transparent sphere (0.05 radius) with red-to-yellow gradient
+            const tcaZoneRadius = 0.05;
+            const tcaZoneGeo = new THREE.SphereGeometry(tcaZoneRadius, 32, 32);
+            
+            // Create vertex colors for radial gradient (red center to yellow surface)
+            const positionAttr = tcaZoneGeo.getAttribute('position');
+            const colors = new Float32Array(positionAttr.count * 3);
+            const redColor = new THREE.Color(0xff2d55);    // Red
+            const yellowColor = new THREE.Color(0xffcc00); // Yellow
+            
+            for (let i = 0; i < positionAttr.count; i++) {
+                const x = positionAttr.getX(i);
+                const y = positionAttr.getY(i);
+                const z = positionAttr.getZ(i);
+                
+                // Normalize position to get distance from center (0 to 1)
+                const distFromCenter = Math.sqrt(x * x + y * y + z * z);
+                
+                // Blend from red (center, distFromCenter ≈ 0) to yellow (surface, distFromCenter ≈ 1)
+                const blendFactor = Math.min(distFromCenter / tcaZoneRadius, 1.0);
+                const color = new THREE.Color().lerpColors(redColor, yellowColor, blendFactor);
+                
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+            tcaZoneGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const tcaZoneMat = new THREE.MeshBasicMaterial({
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.4,  // Base opacity will be animated
+                blending: THREE.AdditiveBlending,
+                side: THREE.FrontSide,
+                wireframe: false
+            });
+            
+            const tcaZoneMesh = new THREE.Mesh(tcaZoneGeo, tcaZoneMat);
+            tcaZoneMesh.position.copy(midpoint);
+            tcaZoneMesh.userData = { 
+                type: 'tca_zone',
+                isAnimating: true,
+                baseOpacity: 0.4,
+                opacityMin: 0.3,
+                opacityMax: 0.5,
+                frequency: 1.5  // Hz (1.5 cycles per second for smoother animation)
+            };
+            conjGroup.add(tcaZoneMesh);
+
         } else {
             // Standard styling for non-critical conjunctions (subtle background)
 
@@ -1880,6 +1929,16 @@ function animate() {
                 child.rotation.x += 0.02;
                 const scale = 1.0 + Math.sin(vizState.animationTime * 3) * 0.25;
                 child.scale.set(scale, scale, scale);
+            }
+            // TCA Zone: Sinusoidal opacity animation (1-2 Hz range specified as 1.5 Hz base)
+            else if (child.userData?.type === 'tca_zone' && child.userData?.isAnimating) {
+                const userData = child.userData;
+                // Sinusoidal wave: oscillate between opacityMin and opacityMax
+                const frequency = userData.frequency || 1.5;
+                const phase = vizState.animationTime * frequency * 2 * Math.PI;
+                const opacityRange = userData.opacityMax - userData.opacityMin;
+                const newOpacity = userData.opacityMin + opacityRange * (Math.sin(phase) + 1) / 2;
+                child.material.opacity = newOpacity;
             }
             // Original conjunction marker rotation (non-critical)
             else if (child.type === 'Mesh' && child.geometry.type === 'OctahedronGeometry' && !child.userData?.isRotating) {

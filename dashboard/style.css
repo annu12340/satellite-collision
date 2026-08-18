@@ -1441,6 +1441,78 @@ body {
 }
 
 /* ============================================================================
+   B-PLANE ENCOUNTER GEOMETRY (live inset)
+   ----------------------------------------------------------------------------
+   Renders the actual mathematical object conjunction assessment is built
+   on: the 2D encounter-plane (B-plane) projection of the miss vector, the
+   hard-body-radius disk, and the n-sigma covariance confidence ellipse.
+   Data comes from src/conjunction.py's encounter-plane routines via the
+   scenario's precomputed 'bplane' time series (see _build_bplane_track in
+   src/api.py) and is drawn every animation frame in drawBplaneChart().
+   ============================================================================ */
+
+.bplane-section {
+    background: linear-gradient(135deg, rgba(123, 47, 247, 0.05), rgba(0, 212, 255, 0.04));
+    border: 1px solid rgba(123, 47, 247, 0.18);
+    border-radius: var(--radius);
+    margin: 10px 10px 0;
+    padding: 10px 12px;
+}
+
+.bplane-section .section-title {
+    margin-bottom: 8px;
+}
+
+#bplane-chart {
+    width: 100%;
+    border-radius: var(--radius-sm);
+    display: block;
+    background: var(--bg-card);
+}
+
+.bplane-readout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.bplane-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 5px 6px;
+    text-align: center;
+}
+
+.bplane-label {
+    display: block;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    letter-spacing: 0.4px;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+}
+
+.bplane-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--accent-purple);
+    white-space: nowrap;
+}
+
+.bplane-value.critical-text { color: var(--risk-critical); }
+
+.bplane-hint {
+    font-size: 0.58rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+/* ============================================================================
    CATASTROPHIC THRESHOLD GAUGE
    ----------------------------------------------------------------------------
    Horizontal bar comparing live encounter specific energy E_MR against the

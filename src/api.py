@@ -50,7 +50,6 @@ from src.conjunction import (
     build_bplane_projection, project_relative_position_series,
     covariance_ellipse_params, probability_of_collision_foster
 )
-from src.utils import StateVector as _StateVector
 from src.risk_optimizer import (
     OrbitalEnvironment, RiskGraph, InterventionOptimizer, project_risk_evolution
 )
@@ -239,8 +238,8 @@ def _build_bplane_track(path1, path2, path1_corrected, maneuver_frame, tca_frame
     v1_tca = positions1[idx_hi] - positions1[idx_lo]
     v2_tca = positions2[idx_hi] - positions2[idx_lo]
 
-    state1_tca = _StateVector(r=positions1[tca_frame], v=v1_tca)
-    state2_tca = _StateVector(r=positions2[tca_frame], v=v2_tca)
+    state1_tca = StateVector(r=positions1[tca_frame], v=v1_tca)
+    state2_tca = StateVector(r=positions2[tca_frame], v=v2_tca)
 
     _, projection_matrix = build_bplane_projection(state1_tca, state2_tca)
 
@@ -632,6 +631,17 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
     # land out of order for unusual maneuver_time_fraction values)
     events.sort(key=lambda e: e['frame'])
 
+    # B-plane (encounter plane) live geometry: hard-body-radius circle,
+    # covariance confidence ellipse, and miss-distance vector at every
+    # frame, built from the real conjunction-assessment projection math
+    # in conjunction.py. The covariance step-down aligns with the
+    # 'covariance_update' event above (tracking refinement).
+    cov_update_frame = int(n_frames * 0.25)
+    bplane = _build_bplane_track(
+        path1, path2, path1_corrected, maneuver_frame, tca_frame, n_frames,
+        has_correction, mass1, mass2, cov_update_frame
+    )
+
     return {
         'name': name,
         'description': description,
@@ -651,6 +661,7 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
         'events': events,
         'specific_energy_j_per_kg': specific_energy_series,
         'catastrophic_energy_threshold_j_per_kg': CATASTROPHIC_ENERGY,
+        'bplane': bplane,
         'metadata': {
             'altitude_km': altitude_km,
             'relative_velocity_kms': relative_velocity_kms,
