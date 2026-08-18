@@ -1141,7 +1141,19 @@ def get_decision_engine():
         # Fall back to cached SIM_DATA if available
         return _build_decision_engine_from_cache()
 
-    return _build_decision_engine_from_sim(sim)
+    # Check if this is a quick request (initial page load) vs explicit re-optimize
+    force_live = request.args.get('live', 'false').lower() == 'true'
+
+    if not force_live:
+        # For initial load, use fast cached path to avoid blocking the UI
+        return _build_decision_engine_from_cache()
+
+    try:
+        return _build_decision_engine_from_sim(sim)
+    except Exception as e:
+        # If live optimizer fails, fall back gracefully
+        print(f"  Decision engine live solve failed: {e}")
+        return _build_decision_engine_from_cache()
 
 
 def _build_decision_engine_from_sim(sim):
