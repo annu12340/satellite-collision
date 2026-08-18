@@ -9,11 +9,18 @@ Implements:
 - Multi-conjunction joint maneuver optimization
 - Fuel-constrained planning with reserve margins
 - Maneuver execution and state update
+- Dynamic custom strategy registration for extensible risk assessment
+
+Custom Strategies
+-----------------
+Register custom risk assessment strategies by placing files in src/strategies/custom_*.py
+Each file must export a function: evaluate_<name>(conjunction, spacecraft_list) -> float
+The integration pipeline automatically validates and wires these strategies.
 """
 
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Callable
 
 from .utils import (
     MU_EARTH, R_EARTH,
@@ -27,6 +34,84 @@ from .conjunction import (
     compute_encounter_plane, project_covariance_to_encounter_plane,
     probability_of_collision_2d, find_tca
 )
+
+
+# ============================================================================
+# CUSTOM STRATEGY REGISTRY
+# ============================================================================
+
+CUSTOM_STRATEGIES: Dict[str, Callable] = {}
+"""
+Registry of custom risk assessment strategies.
+
+Usage:
+    register_strategy('relative_velocity', evaluate_relative_velocity)
+    
+    risk_factor = CUSTOM_STRATEGIES['relative_velocity'](conjunction, spacecraft_list)
+"""
+
+
+def register_strategy(name: str, func: Callable[[Conjunction, List[Spacecraft]], float]) -> None:
+    """
+    Register a custom risk assessment strategy.
+    
+    Parameters
+    ----------
+    name : str
+        Strategy identifier (e.g., 'relative_velocity')
+    func : Callable
+        Function with signature: (Conjunction, List[Spacecraft]) -> float (0-1)
+    
+    Raises
+    ------
+    ValueError
+        If strategy is already registered or function signature is invalid
+    """
+    if name in CUSTOM_STRATEGIES:
+        raise ValueError(f"Strategy '{name}' already registered")
+    
+    CUSTOM_STRATEGIES[name] = func
+
+
+def list_strategies() -> Dict[str, str]:
+    """
+    List all registered custom strategies.
+    
+    Returns
+    -------
+    Dict[str, str]
+        Mapping of strategy name to function docstring
+    """
+    return {name: func.__doc__ or "No documentation" 
+            for name, func in CUSTOM_STRATEGIES.items()}
+
+
+def apply_custom_strategies(conjunction: Conjunction, 
+                           spacecraft_list: List[Spacecraft]) -> Dict[str, float]:
+    """
+    Apply all registered custom strategies to a conjunction.
+    
+    Parameters
+    ----------
+    conjunction : Conjunction
+        The conjunction event to assess
+    spacecraft_list : List[Spacecraft]
+        Full constellation for context
+    
+    Returns
+    -------
+    Dict[str, float]
+        Mapping of strategy name to computed risk factor (0-1)
+    """
+    results = {}
+    for name, func in CUSTOM_STRATEGIES.items():
+        try:
+            results[name] = func(conjunction, spacecraft_list)
+        except Exception as e:
+            print(f"Warning: Custom strategy '{name}' failed: {e}")
+            results[name] = None
+    
+    return results
 
 
 # ============================================================================

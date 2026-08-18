@@ -53,39 +53,97 @@ api.py (exposes simulation state)
 ### Before You Start
 
 1. **Understand the context:** Read the relevant section in #[[file:docs/physics.md]] if touching orbital mechanics
-2. **Identify dependencies:** Check what other modules import your target file
+2. **Identify dependencies:** Check what other modules import your target file (see Dependency Graph above)
 3. **Check for tests:** Look for validation code in the simulation; understand how it's being tested today
+4. **Trace the data flow:** Follow input → output through relevant modules
 
-### Physics-Heavy Changes
+### Physics-Heavy Changes (orbital_mechanics, conjunction)
 
-For modifications to orbital mechanics, conjunction assessment, or risk calculations:
+For modifications to orbit propagation, conjunction assessment, or risk calculations:
 
 1. **Document the math:** Add comments referencing equations or publications
 2. **Validate assumptions:** Check against known test cases (two-line elements, published conjunction data)
 3. **Test edge cases:** High eccentricity orbits, near-polar trajectories, resonant formations
 4. **Cross-reference:** Ensure your changes don't break cascade effects downstream (e.g., conjunction changes affect risk_optimizer)
+5. **Verify conservation:** Energy/momentum conservation in relevant calculations
+
+**Testing approach for physics changes:**
+```python
+# Before making changes, run baseline
+baseline_conjunction = simulation.screen_conjunctions(test_epoch)
+baseline_risk = simulation.compute_total_risk()
+
+# After making changes, compare
+new_conjunction = simulation.screen_conjunctions(test_epoch)
+new_risk = simulation.compute_total_risk()
+
+# Check: differences should be explainable by your change
+assert abs(new_risk - baseline_risk) < expected_delta, "Unexpected risk change"
+```
+
+### Optimization Changes (risk_optimizer, cuopt_client)
+
+When modifying the global optimizer or adding new optimization strategies:
+
+1. **Understand the problem formulation:** How does your strategy minimize the objective?
+2. **Test on small problems:** 20-50 objects with known optimal solutions
+3. **Benchmark against baseline:** Compare solution quality and solve time against greedy/network-flow
+4. **Check scaling:** Test with 1000, 5000, 10000 objects to verify O(n) complexity claims
+5. **Validate constraints:** Ensure fuel budgets, TCA deadlines, and other constraints are respected
 
 ### API & Dashboard Changes
 
-1. **Maintain backward compatibility** where possible
+1. **Maintain backward compatibility** where possible (or version endpoints)
 2. **Document new endpoints** with example requests/responses in code comments
 3. **Test CORS configuration** if adding new routes
-4. **Validate data contracts** between backend and frontend (especially coordinate systems)
+4. **Validate data contracts** between backend and frontend (especially coordinate systems — always ECI)
+5. **Add error handling** with meaningful HTTP status codes and error messages
+
+**API endpoint template:**
+```python
+@app.route('/api/<resource>', methods=['GET', 'POST'])
+def get_resource():
+    """
+    GET /api/<resource> — Retrieve <resource> data
+    
+    Response (200 OK):
+    {
+        'status': 'success',
+        'data': [...]  # coordinate system: ECI
+    }
+    
+    Response (400 Bad Request):
+    {
+        'status': 'error',
+        'message': 'Invalid parameter: X'
+    }
+    """
+    try:
+        # Validation
+        # Logic
+        # Return
+    except ValueError as e:
+        return {'status': 'error', 'message': str(e)}, 400
+```
 
 ### Adding New Features
 
 **Feature workflow:**
 1. Define the physics/algorithm clearly with reference to docs or publications
-2. Implement in appropriate module (don't create new modules without discussion)
-3. Integrate into the main simulation loop or add API endpoint
+2. Identify which module(s) need changes
+3. Implement with minimal scope (don't refactor unrelated code)
 4. Test with realistic scenarios (use existing simulation data)
 5. Document in code and steering docs
+6. Update relevant docstrings and comments
 
 **Example: Adding a new avoidance strategy**
 - Implement function in `avoidance.py`
 - Add to strategy selection logic in `conjunction.py` or `risk_optimizer.py`
 - Create test case with known high-risk conjunction
 - Document delta-v requirements and effectiveness assumptions
+- Update #[[file:docs/strategy.md]] if decision logic changes
+
+
 
 ## Code Quality Standards
 
@@ -218,25 +276,129 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 logger.debug(f"Conjunction detected at t={encounter_time}, Pc={probability}")
+logger.info(f"Maneuver planned: Δv={delta_v}m/s at t={burn_time}")
+logger.warning(f"Covariance trace exceeds threshold: {np.trace(cov)}")
+logger.error(f"Invalid state vector: NaN detected at index {np.where(np.isnan(state))}")
 ```
 
-### Common Issues
+### Inspection Points
+
+**Orbit Propagation Issues:**
+```python
+# Check position after propagation
+state_before = spacecraft.state.copy()
+state_after = propagate_state(state_before, dt, perturbations=True)
+
+# Sanity checks:
+assert np.all(np.isfinite(state_after)), "Non-finite state detected"
+r = np.linalg.norm(state_after[:3])
+assert r > EARTH_RADIUS, f"Crashed: r={r} < R_earth={EARTH_RADIUS}"
+v = np.linalg.norm(state_after[3:6])
+assert v_circular - 2 < v < v_escape, f"Unphysical velocity: v={v}"
+```
+
+**Conjunction Detection:**
+```python
+# Verify TCA is actually closest approach
+t_before = tca - 10  # 10 seconds before
+t_after = tca + 10
+
+r_before = np.linalg.norm(state1(t_before)[:3] - state2(t_before)[:3])
+r_at_tca = np.linalg.norm(state1(tca)[:3] - state2(tca)[:3])
+r_after = np.linalg.norm(state1(t_after)[:3] - state2(t_after)[:3])
+
+assert r_at_tca <= min(r_before, r_after), "TCA is not minimum distance"
+```
+
+**Covariance Matrix:**
+```python
+# Check positive-definiteness
+eigenvalues = np.linalg.eigvals(covariance)
+assert np.all(eigenvalues > 0), f"Non-PD covariance: eigs={eigenvalues}"
+
+# Check trace grows but stays reasonable
+trace_before = np.trace(cov_t0)
+trace_after = np.trace(cov_t1)
+assert trace_after > trace_before, "Uncertainty should increase over time"
+assert trace_after < 1e10, "Uncertainty grew unreasonably large"
+```
+
+### Common Issues & Solutions
 
 **Problem:** Conjunctions not being detected
-- Check: Conjunction time window size in `conjunction.py`
-- Check: Minimum Pc threshold value in `risk_optimizer.py`
-- Verify: Both objects' covariance matrices are positive-definite
+- **Check 1:** Conjunction time window size in `conjunction.py` — may be too small
+- **Check 2:** Minimum Pc threshold value in `risk_optimizer.py` — may be too high
+- **Check 3:** Verify both objects' covariance matrices are positive-definite
+- **Check 4:** Run screen_conjunctions() with debug output enabled
 
-**Problem:** Risk scores seem unrealistic
-- Verify: Debris model assumptions in `damage_minimization.py`
-- Check: Cascade effects in `risk_optimizer.py` (are future conjunctions being propagated?)
-- Confirm: State propagation accuracy (perturbations enabled?)
+**Problem:** Risk scores seem unrealistic (too high or too low)
+- **Verify:** Debris model assumptions in `damage_minimization.py` (mass, velocity)
+- **Check:** Cascade effects in `risk_optimizer.py` — are future conjunctions being propagated?
+- **Confirm:** State propagation accuracy — perturbations enabled? STM calculation correct?
+- **Inspect:** Probability of collision calculation — covariance conditioning issue?
+
+**Problem:** Maneuvers not reducing risk as expected
+- **Check:** STM calculation correctness at maneuver time
+- **Verify:** Delta-v direction optimization (should be along miss gradient)
+- **Inspect:** Timing — is maneuver far enough before TCA?
+- **Test:** With synthetic case: known initial miss, known Δv, verify final miss change
 
 **Problem:** Dashboard not updating
-- Check: Flask API is running and accessible
-- Verify: CORS headers in `api.py`
-- Check: Browser console for fetch errors
-- Ensure: Simulation data is being written to API endpoints
+- **Check 1:** Flask API is running and accessible (curl http://localhost:5000/api/risk)
+- **Check 2:** CORS headers in `api.py` response (should include Access-Control-Allow-Origin)
+- **Check 3:** Browser console for fetch errors
+- **Ensure:** Simulation is writing to API endpoints (add logging to /api/<endpoint>)
+- **Verify:** JSON response format matches frontend expectations
+
+**Problem:** Out-of-memory with large constellation
+- **Profile:** Use `memory_profiler` to identify hotspots
+- **Reduce:** Constellation size or propagation window for testing
+- **Consider:** GPU acceleration (CuOpt) for screening step
+- **Optimize:** Covariance storage (symmetric matrices can be compressed)
+
+### Profiling Performance
+
+```bash
+# Time a particular function
+import time
+t0 = time.time()
+result = conjunction.screen_conjunctions(epoch, all_pairs)
+elapsed = time.time() - t0
+print(f"Screening took {elapsed:.2f}s for {len(all_pairs)} pairs")
+
+# Profile memory usage
+from memory_profiler import profile
+
+@profile
+def expensive_function():
+    # ... code here
+    pass
+
+# Run with: python -m memory_profiler script.py
+```
+
+### Debug Mode for Simulation
+
+Add debug flags to `simulation.py`:
+
+```python
+DEBUG = True
+VERBOSE = True
+SAVE_INTERMEDIATES = True
+
+if DEBUG:
+    logger.setLevel(logging.DEBUG)
+    
+if VERBOSE:
+    print(f"Epoch: {epoch}, N_conjunctions: {len(conjunctions)}")
+    print(f"Risk score: {total_risk:.6f}")
+    
+if SAVE_INTERMEDIATES:
+    np.save(f"state_epoch_{epoch}.npy", all_states)
+    np.save(f"cov_epoch_{epoch}.npy", all_covariances)
+```
+
+
 
 ## Deployment & Operations
 
