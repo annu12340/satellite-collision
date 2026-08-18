@@ -116,9 +116,36 @@
                             <span class="physics-eq">v_rel = &minus;&Delta;d/&Delta;t</span>
                             <span class="physics-eq-live" id="physics-eq-vel">= -- km/s</span>
                         </div>
+                        <div class="physics-row">
+                            <span class="physics-eq">E_MR = m_p&middot;v_rel&sup2; / 2m_t</span>
+                            <span class="physics-eq-live" id="physics-eq-emr">= -- J/g</span>
+                        </div>
                     </div>
 
                     <div class="telemetry-hint" id="telemetry-hint">Run a scenario (Live Events panel) to see live range telemetry</div>
+                </div>
+
+                <!-- Catastrophic Threshold Gauge -->
+                <div class="panel-section catastrophic-section">
+                    <h3 class="section-title">
+                        <span class="title-icon">&#9888;</span>
+                        Catastrophic Threshold
+                        <span class="catastrophic-status-badge" id="catastrophic-status">STANDBY</span>
+                    </h3>
+                    <div class="catastrophic-gauge">
+                        <div class="catastrophic-track">
+                            <div class="catastrophic-fill" id="catastrophic-fill"></div>
+                            <div class="catastrophic-threshold-line" id="catastrophic-marker"></div>
+                        </div>
+                        <div class="catastrophic-labels">
+                            <span>0 J/g</span>
+                            <span class="catastrophic-threshold-label">40 J/g &mdash; CATASTROPHIC LINE</span>
+                        </div>
+                        <div class="catastrophic-value-row">
+                            <span class="catastrophic-value-label">Encounter specific energy (E<sub>MR</sub>)</span>
+                            <span class="catastrophic-value" id="catastrophic-value">-- J/g</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Constellation (compact row) -->
@@ -161,25 +188,24 @@
                     <div class="conjunction-list" id="conjunction-list"></div>
                 </div>
 
-                <!-- Orbital Configuration (Live 3D) - inline preview, click to enlarge -->
-                <div class="panel-section">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#127760;</span>
-                        Orbital Configuration (Live 3D)
-                        <button id="orbits3d-expand-btn" class="orbits3d-expand-btn" title="Enlarge">&#x26F6;</button>
-                    </h3>
-                    <div class="orbits3d-inline-wrap" id="orbits3d-inline-wrap">
-                        <div id="orbits3d-plotly"></div>
-                        <p id="orbits3d-inline-empty" class="modal-empty hidden">
-                            No orbital data yet. Click "RUN SIMULATION" to generate it.
-                        </p>
-                    </div>
-                </div>
+
             </aside>
 
             <!-- 3D Viewport -->
             <main class="viewport-container">
+                <!-- View mode label with toggle (top-right) -->
+                <div class="viewport-view-label" id="view-mode-label">
+                    <span id="view-mode-text">Geographic View</span>
+                    <div class="view-mode-toggle" id="view-mode-toggle">
+                        <div class="toggle-slider">
+                            <span class="toggle-icon">🌍</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Three.js / Plotly Viewport -->
                 <div id="three-viewport"></div>
+                <div id="plotly-viewport" class="hidden"></div>
 
                 <!-- Mission Telemetry HUD (shown during simulation playback) -->
                 <div id="sim-hud" class="hidden">
@@ -217,14 +243,14 @@
                         </button>
                     </div>
                     <div class="control-group">
+                        <button class="vp-btn" id="btn-view-mode" title="Toggle View: Geographic ↔ Orbital Elements" data-view="geographic">
+                            <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" stroke="currentColor" fill="none" stroke-width="1"/><path d="M8 2.5v11M3 8h10" stroke="currentColor" stroke-width="0.8" opacity="0.6"/></svg>
+                        </button>
                         <button class="vp-btn" id="btn-autorotate" title="Auto Rotate">
                             <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2 A6 6 0 1 1 2 8" stroke="currentColor" fill="none" stroke-width="1.5"/><polygon points="2,5 2,11 5,8" fill="currentColor"/></svg>
                         </button>
                         <button class="vp-btn" id="btn-reset" title="Reset Camera">
                             <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 2v3M8 11v3M2 8h3M11 8h3" stroke="currentColor" stroke-width="1.5"/></svg>
-                        </button>
-                        <button class="vp-btn" id="btn-view-orbits3d" title="View Orbits 3D Plot">
-                            <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" fill="none" stroke-width="1.5"/><circle cx="8" cy="8" r="3.2" stroke="currentColor" fill="none" stroke-width="1.2"/><path d="M3 8h1.5M11.5 8H13M8 3v1.5M8 11.5V13" stroke="currentColor" stroke-width="1.2"/></svg>
                         </button>
                     </div>
                 </div>

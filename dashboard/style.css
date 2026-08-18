@@ -542,8 +542,90 @@ body {
     background: var(--bg-primary);
 }
 
+#plotly-viewport {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-primary);
+}
+
+#plotly-viewport.hidden {
+    display: none !important;
+}
+
 #three-viewport canvas {
     display: block;
+}
+
+.viewport-view-label {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: rgba(15, 21, 32, 0.75);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 6px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--accent-blue);
+    letter-spacing: 0.5px;
+    backdrop-filter: blur(8px);
+    z-index: 15;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.view-mode-toggle {
+    width: 48px;
+    height: 24px;
+    background: rgba(90, 107, 138, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    position: relative;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    padding: 2px;
+}
+
+.view-mode-toggle:hover {
+    background: rgba(90, 107, 138, 0.5);
+    border-color: var(--accent-blue);
+}
+
+.view-mode-toggle.orbital {
+    background: rgba(0, 212, 255, 0.15);
+}
+
+.toggle-slider {
+    width: 20px;
+    height: 20px;
+    background: var(--border-color);
+    border-radius: 10px;
+    position: absolute;
+    left: 2px;
+    transition: left 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.view-mode-toggle.orbital .toggle-slider {
+    left: 26px;
+    background: var(--accent-blue);
+}
+
+.toggle-icon {
+    font-size: 0.5rem;
+    color: var(--text-primary);
+    opacity: 0.7;
+}
+
+.view-mode-toggle.orbital .toggle-icon {
+    opacity: 1;
 }
 
 .viewport-controls {
@@ -553,6 +635,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    z-index: 20;
 }
 
 .control-group {
@@ -1355,6 +1438,139 @@ body {
     font-weight: 700;
     color: var(--accent-cyan);
     white-space: nowrap;
+}
+
+/* ============================================================================
+   CATASTROPHIC THRESHOLD GAUGE
+   ----------------------------------------------------------------------------
+   Horizontal bar comparing live encounter specific energy E_MR against the
+   NASA breakup model's 40 J/g catastrophic-fragmentation line. The track is
+   scaled so the threshold line sits at a fixed 60% position (see
+   updateCatastrophicGauge() in app.js, which scales the fill to match).
+   ============================================================================ */
+
+.catastrophic-section {
+    background: linear-gradient(135deg, rgba(255, 45, 85, 0.05), rgba(255, 149, 0, 0.04));
+    border: 1px solid rgba(255, 149, 0, 0.18);
+    border-radius: var(--radius);
+    margin: 10px 10px 0;
+    padding: 10px 12px;
+}
+
+.catastrophic-section .section-title {
+    margin-bottom: 8px;
+}
+
+.catastrophic-status-badge {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    background: rgba(90, 107, 138, 0.15);
+    color: var(--text-muted);
+    border: 1px solid rgba(90, 107, 138, 0.3);
+    text-transform: uppercase;
+}
+
+.catastrophic-status-badge.success {
+    background: rgba(48, 209, 88, 0.12);
+    color: var(--risk-low);
+    border-color: rgba(48, 209, 88, 0.3);
+}
+
+.catastrophic-status-badge.warning {
+    background: rgba(255, 149, 0, 0.12);
+    color: var(--risk-high);
+    border-color: rgba(255, 149, 0, 0.3);
+}
+
+.catastrophic-status-badge.critical {
+    background: rgba(255, 45, 85, 0.15);
+    color: var(--risk-critical);
+    border-color: rgba(255, 45, 85, 0.4);
+    animation: catastrophic-pulse 1s infinite;
+}
+
+@keyframes catastrophic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+.catastrophic-gauge {
+    padding: 4px 0 0;
+}
+
+.catastrophic-track {
+    position: relative;
+    height: 10px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    overflow: visible;
+    border: 1px solid var(--border-color);
+}
+
+.catastrophic-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0%;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    background: linear-gradient(90deg, #30d158, #ffcc00);
+    transition: width 0.15s linear;
+}
+
+.catastrophic-fill.over-threshold {
+    background: linear-gradient(90deg, #30d158, #ffcc00, #ff2d55);
+    box-shadow: 0 0 8px rgba(255, 45, 85, 0.6);
+}
+
+.catastrophic-threshold-line {
+    position: absolute;
+    left: 60%;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    background: #ff2d55;
+    box-shadow: 0 0 4px rgba(255, 45, 85, 0.8);
+}
+
+.catastrophic-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+}
+
+.catastrophic-threshold-label {
+    color: var(--risk-critical);
+    font-weight: 600;
+}
+
+.catastrophic-value-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+}
+
+.catastrophic-value-label {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+}
+
+.catastrophic-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
 }
 
 /* Right panel: only sim + timeline, give sim more room */

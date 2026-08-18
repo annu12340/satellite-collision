@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.utils import (
     state_to_coe, coe_to_state, R_EARTH, MU_EARTH, orbital_period,
-    StateVector, OrbitalElements, Spacecraft
+    StateVector, OrbitalElements, Spacecraft, CATASTROPHIC_ENERGY
 )
 
 
@@ -45,12 +45,17 @@ from src.simulation import (
     generate_leo_constellation,
     inject_collision_scenario
 )
-from src.conjunction import compute_risk_score, estimate_debris_count, debris_lifetime
+from src.conjunction import (
+    compute_risk_score, estimate_debris_count, debris_lifetime,
+    build_bplane_projection, project_relative_position_series,
+    covariance_ellipse_params, probability_of_collision_foster
+)
+from src.utils import StateVector as _StateVector
 from src.risk_optimizer import (
     OrbitalEnvironment, RiskGraph, InterventionOptimizer, project_risk_evolution
 )
 from src.orbital_mechanics import generate_ephemeris, propagate_state
-from src.damage_minimization import predict_collision_outcome
+from src.damage_minimization import predict_collision_outcome, collision_specific_energy
 from src.simulation import plot_orbits_3d
 from src.ai_analysis import plan_intervention_from_query
 
@@ -135,6 +140,172 @@ def generate_collision_scenarios(spacecraft_list, conjunctions):
     )
 
     return scenarios
+
+
+def _estimate_hard_body_radius_m(mass_kg):
+    """
+    Rough bus-size scaling for a spacecraft's effective hard-body radius,
+    used only for the demo scenario's B-plane hard-body-radius circle
+    (real conjunction assessment in conjunction.py derives this from actual
+    cross-sectional area: r = sqrt(area / pi), see compute_collision_probability).
+
+    Scales with the cube root of mass, clamped to a plausible bus-only
+    range (without solar panels) of roughly 0.3-3 m.
+    """
+    r_m = 0.3 + 0.08 * mass_kg ** (1.0 / 3.0)
+    return float(np.clip(r_m, 0.3, 3.0))
+
+
+def _build_covariance_ellipse(sigma_major_km, sigma_minor_km, angle_rad, n_sigma=3.0):
+    """
+    Construct a 2x2 encounter-plane covariance matrix from desired
+    principal sigmas and orientation, then immediately round-trip it
+    through conjunction.covariance_ellipse_params() -- the same
+    eigendecomposition routine the real conjunction-assessment pipeline
+    uses to render B-plane confidence ellipses. This keeps the demo
+    scenario's *rendering* path identical to the production path, even
+    though the covariance *inputs* here are procedurally generated instead
+    of coming from real tracking data.
+
+    Returns
+    -------
+    covariance_2d : ndarray (2, 2)
+    (semi_major_km, semi_minor_km, ellipse_angle_rad) : tuple of float
+    """
+    c, s = np.cos(angle_rad), np.sin(angle_rad)
+    R = np.array([[c, -s], [s, c]])
+    sigma_sq = np.diag([
+        (sigma_major_km / n_sigma) ** 2,
+        (sigma_minor_km / n_sigma) ** 2
+    ])
+    covariance_2d = R @ sigma_sq @ R.T
+    ellipse = covariance_ellipse_params(covariance_2d, n_sigma=n_sigma)
+    return covariance_2d, ellipse
+
+
+def _build_bplane_track(path1, path2, path1_corrected, maneuver_frame, tca_frame,
+                         n_frames, has_correction, mass1, mass2,
+                         cov_update_frame, sigma_before_m=500.0, sigma_after_m=120.0):
+    """
+    Compute a live B-plane (encounter plane) time series for a collision
+    scenario: the miss-distance vector, hard-body-radius circle, and
+    covariance confidence ellipse at every animation frame.
+
+    This is the real mathematical object conjunction assessment is built
+    on (Alfriend/Akella / CARA encounter-plane formulation, see
+    conjunction.py and docs/physics.md), projected from the scenario's
+    already-computed 3D trajectories using the same
+    compute_encounter_plane() / probability_of_collision_foster() routines
+    used by the production conjunction pipeline. The encounter-plane basis
+    is built once from the TCA geometry (it changes slowly relative to the
+    few-minute encounter timescale) and reused to project every frame, so
+    the burn's effect on the miss vector reads as continuous 2D motion
+    rather than a jump.
+
+    Parameters
+    ----------
+    path1, path2 : list of [x, y, z] (n_frames)
+        Uncorrected trajectories [km] (object1, object2)
+    path1_corrected : list of [x, y, z] (n_frames)
+        Object1 trajectory after the avoidance burn (identical to path1
+        before the burn)
+    maneuver_frame, tca_frame, n_frames : int
+    has_correction : bool
+    mass1, mass2 : float
+        Object masses [kg], used only to size the hard-body-radius circle
+    cov_update_frame : int
+        Frame at which tracking refinement reduces covariance (ties to the
+        scenario's 'covariance_update' event)
+    sigma_before_m, sigma_after_m : float
+        Cross-track 1-sigma position uncertainty before/after refinement [m]
+
+    Returns
+    -------
+    dict
+        Per-frame arrays (miss_xi_km, miss_zeta_km, cov_semi_major_km,
+        cov_semi_minor_km, pc_estimate) plus scenario-constant fields
+        (cov_angle_rad, combined_radius_km, cov_update_frame)
+    """
+    positions1 = np.array(path1, dtype=float)
+    positions2 = np.array(path2, dtype=float)
+
+    # Build the encounter-plane basis from TCA geometry. Velocity is
+    # estimated via central finite difference on the (kinematic, not
+    # time-scaled) frame path -- only the *direction* of relative
+    # velocity matters for orienting the plane, and that direction is
+    # preserved regardless of the arbitrary per-frame time step.
+    idx_lo = max(tca_frame - 1, 0)
+    idx_hi = min(tca_frame + 1, n_frames - 1)
+    v1_tca = positions1[idx_hi] - positions1[idx_lo]
+    v2_tca = positions2[idx_hi] - positions2[idx_lo]
+
+    state1_tca = _StateVector(r=positions1[tca_frame], v=v1_tca)
+    state2_tca = _StateVector(r=positions2[tca_frame], v=v2_tca)
+
+    _, projection_matrix = build_bplane_projection(state1_tca, state2_tca)
+
+    # Project the uncorrected trajectory, and the corrected one if present
+    miss_2d = project_relative_position_series(positions1, positions2, projection_matrix)
+    if has_correction:
+        positions1_corrected = np.array(path1_corrected, dtype=float)
+        miss_2d_corrected = project_relative_position_series(
+            positions1_corrected, positions2, projection_matrix
+        )
+    else:
+        miss_2d_corrected = miss_2d
+
+    # Hard-body-radius circle (constant size -- physical geometry doesn't change)
+    r1_m = _estimate_hard_body_radius_m(mass1)
+    r2_m = _estimate_hard_body_radius_m(mass2)
+    combined_radius_km = (r1_m + r2_m) / 1000.0
+
+    # Elongated "cigar-shaped" covariance ellipse (along-track uncertainty
+    # dominates cross-track for real conjunction assessments), oriented at
+    # a fixed angle for this encounter. Steps to a smaller ellipse once
+    # additional tracking passes refine the orbit (cov_update_frame).
+    angle_rad = np.radians(25.0)
+    cov_before, ellipse_before = _build_covariance_ellipse(
+        sigma_before_m * 3 / 1000.0, sigma_before_m / 1000.0, angle_rad
+    )
+    cov_after, ellipse_after = _build_covariance_ellipse(
+        sigma_after_m * 3 / 1000.0, sigma_after_m / 1000.0, angle_rad
+    )
+
+    miss_xi_km, miss_zeta_km = [], []
+    cov_semi_major_km, cov_semi_minor_km = [], []
+    pc_estimate = []
+
+    for i in range(n_frames):
+        use_corrected = has_correction and i >= maneuver_frame
+        xi, zeta = (miss_2d_corrected[i] if use_corrected else miss_2d[i])
+        miss_xi_km.append(float(xi))
+        miss_zeta_km.append(float(zeta))
+
+        if i < cov_update_frame:
+            semi_major, semi_minor = ellipse_before[0], ellipse_before[1]
+            cov_2d = cov_before
+        else:
+            semi_major, semi_minor = ellipse_after[0], ellipse_after[1]
+            cov_2d = cov_after
+        cov_semi_major_km.append(float(semi_major))
+        cov_semi_minor_km.append(float(semi_minor))
+
+        pc = probability_of_collision_foster(
+            np.array([xi, zeta]), cov_2d, combined_radius_km
+        )
+        pc_estimate.append(float(pc))
+
+    return {
+        'miss_xi_km': miss_xi_km,
+        'miss_zeta_km': miss_zeta_km,
+        'cov_semi_major_km': cov_semi_major_km,
+        'cov_semi_minor_km': cov_semi_minor_km,
+        'cov_angle_rad': float(angle_rad),
+        'combined_radius_km': float(combined_radius_km),
+        'pc_estimate': pc_estimate,
+        'cov_update_frame': int(cov_update_frame),
+        'n_sigma': 3.0,
+    }
 
 
 def _build_scenario(name, description, altitude_km, inclination1_deg, inclination2_deg,
@@ -230,6 +401,48 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
     min_distance = min(distances)
     min_distance_corrected = min(distances_corrected)
 
+    # ------------------------------------------------------------------
+    # CATASTROPHIC-THRESHOLD ENERGY TIMELINE
+    # ------------------------------------------------------------------
+    # E_MR = (m_p * v_rel^2) / (2 * m_t)  [J/kg], compared against the NASA
+    # breakup model's 40 J/g = 40,000 J/kg catastrophic-fragmentation line
+    # (see docs/physics.md and src/damage_minimization.collision_specific_energy).
+    #
+    # v_rel is treated as a physical property of the encounter that only
+    # changes if/when the avoidance burn reduces the closing speed —
+    # consistent with strategy_reduce_relative_velocity() in
+    # damage_minimization.py, which converts available delta-v directly
+    # into a relative-velocity reduction (capped at 50% of v_rel, since a
+    # single-sided burn can only cancel so much of the closing vector).
+    m_proj = min(mass1, mass2)
+    m_targ = max(mass1, mass2)
+
+    v_rel_reduction_kms = 0.0
+    if has_correction and maneuver_dv_ms > 0:
+        v_rel_reduction_kms = min(maneuver_dv_ms / 1000.0, relative_velocity_kms * 0.5)
+    v_rel_final_kms = max(0.05, relative_velocity_kms - v_rel_reduction_kms)
+
+    v_rel_series = []
+    for i in range(n_frames):
+        if not has_correction or i < maneuver_frame:
+            v_rel_series.append(relative_velocity_kms)
+        elif i >= tca_frame:
+            v_rel_series.append(v_rel_final_kms)
+        else:
+            # Smoothstep the burn's effect on closing velocity between
+            # maneuver ignition and TCA (the delta-v takes effect
+            # progressively, not instantaneously).
+            span = max(tca_frame - maneuver_frame, 1)
+            t = (i - maneuver_frame) / span
+            t = t * t * (3 - 2 * t)  # smoothstep easing
+            v_rel_series.append(relative_velocity_kms + (v_rel_final_kms - relative_velocity_kms) * t)
+
+    specific_energy_series = [
+        float(collision_specific_energy(m_proj, m_targ, v)) for v in v_rel_series
+    ]
+    specific_energy_initial = specific_energy_series[0]
+    specific_energy_final = specific_energy_series[-1]
+
     # Generate debris cloud at collision point (if no correction)
     debris_fragments = []
     if not has_correction:
@@ -263,8 +476,8 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
     events.append({
         'frame': int(n_frames * 0.15),
         'type': 'detection',
-        'message': f'Conjunction detected. Pc rising. Miss distance: {min_distance:.1f} km',
-        'data': {'pc': 2.3e-4, 'miss_distance': min_distance}
+        'message': f'Conjunction detected. Pc rising. Current range: {distances[int(n_frames * 0.15)]:.1f} km, predicted miss distance: {min_distance:.1f} km',
+        'data': {'pc': 2.3e-4, 'current_range_km': distances[int(n_frames * 0.15)], 'predicted_miss_distance_km': min_distance}
     })
     events.append({
         'frame': int(n_frames * 0.20),
@@ -436,6 +649,8 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
         'min_distance_corrected_km': float(min_distance_corrected),
         'debris_fragments': debris_fragments,
         'events': events,
+        'specific_energy_j_per_kg': specific_energy_series,
+        'catastrophic_energy_threshold_j_per_kg': CATASTROPHIC_ENERGY,
         'metadata': {
             'altitude_km': altitude_km,
             'relative_velocity_kms': relative_velocity_kms,
@@ -444,6 +659,11 @@ def _build_scenario(name, description, altitude_km, inclination1_deg, inclinatio
             'maneuver_dv_ms': maneuver_dv_ms,
             'object1_type': 'COMSAT' if mass1 < 500 else 'EOS',
             'object2_type': 'DEBRIS' if not has_correction else 'COMSAT',
+            'v_rel_final_kms': v_rel_final_kms,
+            'specific_energy_initial_j_per_kg': specific_energy_initial,
+            'specific_energy_final_j_per_kg': specific_energy_final,
+            'is_catastrophic_initial': bool(specific_energy_initial >= CATASTROPHIC_ENERGY),
+            'is_catastrophic_final': bool(specific_energy_final >= CATASTROPHIC_ENERGY),
         }
     }
 
@@ -936,6 +1156,7 @@ def stream_scenario(scenario_id):
         has_correction = scenario['has_correction']
         maneuver_frame = scenario['maneuver_frame']
         debris = scenario['debris_fragments']
+        specific_energy_series = scenario.get('specific_energy_j_per_kg', [])
 
         event_idx = 0
         frame_interval = 0.05 / speed  # ~20 FPS at speed=1
@@ -958,6 +1179,9 @@ def stream_scenario(scenario_id):
                 'object2_pos': pos2,
                 'distance_km': dist,
                 'is_corrected': use_corrected,
+                'specific_energy_j_per_kg': (
+                    specific_energy_series[frame] if frame < len(specific_energy_series) else None
+                ),
             }
 
             yield f"event: frame\ndata: {json.dumps(frame_data)}\n\n"

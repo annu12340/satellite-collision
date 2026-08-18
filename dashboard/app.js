@@ -30,6 +30,7 @@ const vizState = {
     autoRotate: false,
     animationTime: 0,
     selectedObject: null,
+    viewMode: 'geographic', // 'geographic' or 'orbital'
 };
 
 // Scale factor: Real Earth radius = 6378km, we use radius=1 in scene
@@ -125,11 +126,6 @@ function showDashboard() {
     setTimeout(() => {
         document.getElementById('loading-screen').style.display = 'none';
         onWindowResize();
-        // The orbits3d Plotly div was rendered while the dashboard was
-        // display:none (zero size), so resize it now that it's visible.
-        if (typeof Plotly !== 'undefined') {
-            Plotly.Plots.resize('orbits3d-plotly');
-        }
     }, 600);
 }
 
@@ -443,6 +439,18 @@ function createOrbits() {
     const orbitGroup = new THREE.Group();
     orbitGroup.name = 'orbits';
 
+    // Find the critical pair spacecraft for highlighting
+    let criticalIds = new Set();
+    simData.conjunctions.forEach((conj) => {
+        const id1 = conj.obj1_id || '';
+        const id2 = conj.obj2_id || '';
+        if ((id1.includes('CUBE') && id1.includes('0002') && id2.includes('COMSAT') && id2.includes('0003')) ||
+            (id2.includes('CUBE') && id2.includes('0002') && id1.includes('COMSAT') && id1.includes('0003'))) {
+            criticalIds.add(id1);
+            criticalIds.add(id2);
+        }
+    });
+
     simData.spacecraft.forEach((sc, idx) => {
         if (!sc.orbit_path || sc.orbit_path.length < 3) return;
 
@@ -456,25 +464,37 @@ function createOrbits() {
         const curve = new THREE.CatmullRomCurve3(points, true);
         const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(150));
 
-        // Color based on spacecraft type
-        let color;
-        switch (sc.type) {
-            case 'COMSAT': color = new THREE.Color(0x00d4ff); break;
-            case 'EOS': color = new THREE.Color(0x7b2ff7); break;
-            case 'CUBE': color = new THREE.Color(0x06ffd0); break;
-            case 'DEBRIS': color = new THREE.Color(0x5a6b8a); break;
-            default: color = new THREE.Color(0x3a5588);
+        const isCriticalPair = criticalIds.has(sc.id);
+
+        // Color and opacity based on whether this is the critical pair
+        let color, opacity, linewidth;
+        if (isCriticalPair) {
+            // Bright red for critical pair orbits
+            color = new THREE.Color(0xff2d55);
+            opacity = 0.9;
+            linewidth = 2.5;
+        } else {
+            // Faded background orbits
+            switch (sc.type) {
+                case 'COMSAT': color = new THREE.Color(0x00d4ff); break;
+                case 'EOS': color = new THREE.Color(0x7b2ff7); break;
+                case 'CUBE': color = new THREE.Color(0x06ffd0); break;
+                case 'DEBRIS': color = new THREE.Color(0x5a6b8a); break;
+                default: color = new THREE.Color(0x3a5588);
+            }
+            opacity = sc.type === 'DEBRIS' ? 0.08 : 0.12;
+            linewidth = 0.8;
         }
 
         const material = new THREE.LineBasicMaterial({
             color: color,
             transparent: true,
-            opacity: sc.type === 'DEBRIS' ? 0.15 : 0.3,
-            linewidth: 1
+            opacity: opacity,
+            linewidth: linewidth
         });
 
         const line = new THREE.Line(geometry, material);
-        line.userData = { type: 'orbit', spacecraft: sc, index: idx };
+        line.userData = { type: 'orbit', spacecraft: sc, index: idx, isCritical: isCriticalPair };
         orbitGroup.add(line);
         orbitLines.push(line);
     });
@@ -606,6 +626,18 @@ function createConjunctions() {
     const conjGroup = new THREE.Group();
     conjGroup.name = 'conjunctions';
 
+    // Find the highest-risk conjunction for dramatic highlighting (CRITICAL > HIGH > MEDIUM)
+    let criticalPairIdx = -1;
+    let maxRiskScore = -1;
+    const riskPriority = { 'CRITICAL': 3, 'HIGH': 2, 'MEDIUM': 1, 'LOW': 0 };
+    simData.conjunctions.forEach((conj, idx) => {
+        const riskScore = riskPriority[conj.risk_level] || 0;
+        if (riskScore > maxRiskScore) {
+            maxRiskScore = riskScore;
+            criticalPairIdx = idx;
+        }
+    });
+
     simData.conjunctions.forEach((conj, idx) => {
         const pos1 = new THREE.Vector3(
             conj.obj1_pos[0] * SCALE,
@@ -627,49 +659,123 @@ function createConjunctions() {
             default: color = 0x30d158;
         }
 
-        // Dashed line between objects
-        const points = [pos1, pos2];
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const material = new THREE.LineDashedMaterial({
-            color: color,
-            dashSize: 0.02,
-            gapSize: 0.01,
-            transparent: true,
-            opacity: 0.8,
-            linewidth: 2
-        });
+        const isCriticalPair = (idx === criticalPairIdx);
 
-        const line = new THREE.Line(geometry, material);
-        line.computeLineDistances();
-        line.userData = { type: 'conjunction', data: conj, index: idx };
-        conjGroup.add(line);
-        conjunctionLines.push(line);
+        if (isCriticalPair) {
+            // DRAMATIC STYLING FOR THE COLLISION PAIR
 
-        // Warning marker at midpoint
-        const midpoint = pos1.clone().add(pos2).multiplyScalar(0.5);
-        const markerGeom = new THREE.OctahedronGeometry(0.012, 0);
-        const markerMat = new THREE.MeshBasicMaterial({
-            color: color,
-            transparent: true,
-            opacity: 0.9,
-        });
-        const marker = new THREE.Mesh(markerGeom, markerMat);
-        marker.position.copy(midpoint);
-        marker.userData = { type: 'conjunction', data: conj, index: idx };
-        conjGroup.add(marker);
-
-        // Glow around critical conjunctions
-        if (conj.risk_level === 'CRITICAL' || conj.risk_level === 'HIGH') {
-            const glowGeom = new THREE.SphereGeometry(0.025, 12, 12);
-            const glowMat = new THREE.MeshBasicMaterial({
-                color: color,
+            // 1. Bright solid connecting line between the two objects
+            const brightLinePoints = [pos1, pos2];
+            const brightLineGeo = new THREE.BufferGeometry().setFromPoints(brightLinePoints);
+            const brightLineMat = new THREE.LineBasicMaterial({
+                color: 0xff2d55,
                 transparent: true,
-                opacity: 0.15,
+                opacity: 1.0,
+                linewidth: 4,
                 blending: THREE.AdditiveBlending
             });
-            const glow = new THREE.Mesh(glowGeom, glowMat);
-            glow.position.copy(midpoint);
-            conjGroup.add(glow);
+            const brightLine = new THREE.Line(brightLineGeo, brightLineMat);
+            brightLine.userData = { type: 'conjunction_critical_line', data: conj, index: idx };
+            conjGroup.add(brightLine);
+            conjunctionLines.push(brightLine);
+
+            // 2. Pulsing glow spheres around each collision object
+            const pulseGlowSize = 0.045;
+            const pulseGlowMat = new THREE.MeshBasicMaterial({
+                color: 0xff2d55,
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending
+            });
+
+            const glow1Geo = new THREE.SphereGeometry(pulseGlowSize, 16, 16);
+            const glow1 = new THREE.Mesh(glow1Geo, pulseGlowMat.clone());
+            glow1.position.copy(pos1);
+            glow1.userData = { type: 'collision_glow', isPulsing: true, baseScale: 1 };
+            conjGroup.add(glow1);
+
+            const glow2Geo = new THREE.SphereGeometry(pulseGlowSize, 16, 16);
+            const glow2 = new THREE.Mesh(glow2Geo, pulseGlowMat.clone());
+            glow2.position.copy(pos2);
+            glow2.userData = { type: 'collision_glow', isPulsing: true, baseScale: 1 };
+            conjGroup.add(glow2);
+
+            // 3. Large expanding pulse ring at midpoint
+            const midpoint = pos1.clone().add(pos2).multiplyScalar(0.5);
+            const pulseRingGeo = new THREE.RingGeometry(0.015, 0.035, 32);
+            const pulseRingMat = new THREE.MeshBasicMaterial({
+                color: 0xff2d55,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending
+            });
+            const pulseRing = new THREE.Mesh(pulseRingGeo, pulseRingMat);
+            pulseRing.position.copy(midpoint);
+            pulseRing.lookAt(camera.position);
+            pulseRing.userData = { type: 'collision_pulse_ring', isPulsing: true, baseScale: 1 };
+            conjGroup.add(pulseRing);
+
+            // 4. Bright marker at midpoint (rotating octahedron)
+            const criticalMarkerGeo = new THREE.OctahedronGeometry(0.018, 1);
+            const criticalMarkerMat = new THREE.MeshBasicMaterial({
+                color: 0xff2d55,
+                transparent: true,
+                opacity: 1.0,
+                blending: THREE.AdditiveBlending
+            });
+            const criticalMarker = new THREE.Mesh(criticalMarkerGeo, criticalMarkerMat);
+            criticalMarker.position.copy(midpoint);
+            criticalMarker.userData = { type: 'conjunction_critical_marker', isRotating: true };
+            conjGroup.add(criticalMarker);
+
+        } else {
+            // Standard styling for non-critical conjunctions (subtle background)
+
+            // Dashed line between objects
+            const points = [pos1, pos2];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineDashedMaterial({
+                color: color,
+                dashSize: 0.02,
+                gapSize: 0.01,
+                transparent: true,
+                opacity: 0.3,  // Reduced opacity for background
+                linewidth: 1
+            });
+
+            const line = new THREE.Line(geometry, material);
+            line.computeLineDistances();
+            line.userData = { type: 'conjunction', data: conj, index: idx };
+            conjGroup.add(line);
+            conjunctionLines.push(line);
+
+            // Subtle marker at midpoint
+            const midpoint = pos1.clone().add(pos2).multiplyScalar(0.5);
+            const markerGeom = new THREE.OctahedronGeometry(0.008, 0);
+            const markerMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.4,
+            });
+            const marker = new THREE.Mesh(markerGeom, markerMat);
+            marker.position.copy(midpoint);
+            marker.userData = { type: 'conjunction', data: conj, index: idx };
+            conjGroup.add(marker);
+
+            // Subtle glow around non-critical high-risk conjunctions
+            if (conj.risk_level === 'HIGH') {
+                const glowGeom = new THREE.SphereGeometry(0.02, 12, 12);
+                const glowMat = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.08,
+                    blending: THREE.AdditiveBlending
+                });
+                const glow = new THREE.Mesh(glowGeom, glowMat);
+                glow.position.copy(midpoint);
+                conjGroup.add(glow);
+            }
         }
     });
 
@@ -1500,11 +1606,9 @@ function startOrbits3dAutoRotate(divId) {
 }
 
 function initOrbits3dPanel() {
-    const btn = document.getElementById('btn-view-orbits3d');
-    const expandBtn = document.getElementById('orbits3d-expand-btn');
+    // Note: inline preview removed, only modal functionality remains
     const modal = document.getElementById('orbits3d-modal');
     const closeBtn = document.getElementById('orbits3d-close');
-    const inlineWrap = document.getElementById('orbits3d-inline-wrap');
 
     const openModal = () => {
         if (!modal) return;
@@ -1514,8 +1618,6 @@ function initOrbits3dPanel() {
     };
     const closeModal = () => modal && modal.classList.add('hidden');
 
-    if (btn) btn.addEventListener('click', openModal);
-    if (expandBtn) expandBtn.addEventListener('click', openModal);
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
     if (modal) {
         modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
@@ -1523,27 +1625,18 @@ function initOrbits3dPanel() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) closeModal();
     });
-
-    // Stop the ambient auto-rotate as soon as the user starts interacting
-    // with the inline preview, so it doesn't fight manual dragging/zooming.
-    if (inlineWrap) {
-        inlineWrap.addEventListener('mousedown', stopOrbits3dAutoRotate, { once: true });
-        inlineWrap.addEventListener('wheel', stopOrbits3dAutoRotate, { once: true });
-        inlineWrap.addEventListener('touchstart', stopOrbits3dAutoRotate, { once: true });
-    }
-
-    refreshOrbits3dPanel();
 }
 
 /** Re-render the inline preview (and modal, if open) from the latest simData. Call after any data refresh. */
 function refreshOrbits3dPanel() {
-    const emptyMsg = document.getElementById('orbits3d-inline-empty');
-    const ok = renderOrbits3d('orbits3d-plotly', { showToolbar: false });
-    if (emptyMsg) emptyMsg.classList.toggle('hidden', ok);
+    // Update main viewport if in orbital view
+    if (vizState.viewMode === 'orbital') {
+        renderOrbits3d('plotly-viewport', { showToolbar: true });
+        stopOrbits3dAutoRotate();
+        startOrbits3dAutoRotate('plotly-viewport');
+    }
 
-    stopOrbits3dAutoRotate();
-    if (ok) startOrbits3dAutoRotate('orbits3d-plotly');
-
+    // Update modal if open
     const modal = document.getElementById('orbits3d-modal');
     if (modal && !modal.classList.contains('hidden')) {
         renderOrbits3d('orbits3d-plotly-modal', { showToolbar: true });
@@ -1590,6 +1683,14 @@ function setupControls() {
         if (shellGroup) shellGroup.visible = vizState.showShells;
     });
 
+    document.getElementById('btn-view-mode').addEventListener('click', toggleViewMode);
+    
+    // Also attach to the new inline toggle
+    const viewModeToggle = document.getElementById('view-mode-toggle');
+    if (viewModeToggle) {
+        viewModeToggle.addEventListener('click', toggleViewMode);
+    }
+
     document.getElementById('btn-autorotate').addEventListener('click', (e) => {
         vizState.autoRotate = !vizState.autoRotate;
         e.currentTarget.classList.toggle('active');
@@ -1602,6 +1703,43 @@ function setupControls() {
         controls.target.set(0, 0, 0);
         controls.update();
     });
+}
+
+// ============================================================================
+// VIEW MODE TOGGLE (Geographic ↔ Orbital Elements)
+// ============================================================================
+
+function toggleViewMode() {
+    vizState.viewMode = vizState.viewMode === 'geographic' ? 'orbital' : 'geographic';
+    
+    const threeViewport = document.getElementById('three-viewport');
+    const plotlyViewport = document.getElementById('plotly-viewport');
+    const viewLabel = document.getElementById('view-mode-text');
+    const viewToggle = document.getElementById('view-mode-toggle');
+    
+    if (vizState.viewMode === 'orbital') {
+        // Switch to Plotly view
+        threeViewport.classList.add('hidden');
+        plotlyViewport.classList.remove('hidden');
+        viewLabel.textContent = 'Orbital Elements';
+        viewToggle.classList.add('orbital');
+        
+        // Render the Plotly plot
+        if (simData) {
+            renderOrbits3d('plotly-viewport', { showToolbar: true });
+            startOrbits3dAutoRotate('plotly-viewport');
+        }
+    } else {
+        // Switch to Three.js geographic view
+        threeViewport.classList.remove('hidden');
+        plotlyViewport.classList.add('hidden');
+        viewLabel.textContent = 'Geographic View';
+        viewToggle.classList.remove('orbital');
+        stopOrbits3dAutoRotate();
+        
+        // Trigger a resize to ensure Three.js re-renders properly
+        onWindowResize();
+    }
 }
 
 // ============================================================================
@@ -1720,14 +1858,34 @@ function animate() {
         earthMesh.material.uniforms.time.value = vizState.animationTime;
     }
 
-    // Pulse conjunction markers
+    // Pulse collision pair glows and rotating critical marker
     const conjGroup = scene.getObjectByName('conjunctions');
     if (conjGroup) {
         conjGroup.children.forEach(child => {
-            if (child.type === 'Mesh' && child.geometry.type === 'OctahedronGeometry') {
+            // Pulsing collision glows
+            if (child.userData?.isPulsing && child.userData?.type === 'collision_glow') {
+                const pulse = 1.0 + Math.sin(vizState.animationTime * 4) * 0.3;
+                child.scale.set(pulse, pulse, pulse);
+                child.material.opacity = 0.4 + Math.sin(vizState.animationTime * 4) * 0.3;
+            }
+            // Pulsing collision pulse ring
+            else if (child.userData?.isPulsing && child.userData?.type === 'collision_pulse_ring') {
+                const pulse = 1.0 + Math.sin(vizState.animationTime * 3.5) * 0.4;
+                child.scale.set(pulse, pulse, pulse);
+                child.material.opacity = Math.max(0.2, Math.sin(vizState.animationTime * 3.5) * 0.8);
+            }
+            // Rotating critical marker
+            else if (child.userData?.isRotating && child.userData?.type === 'conjunction_critical_marker') {
+                child.rotation.y += 0.04;
+                child.rotation.x += 0.02;
+                const scale = 1.0 + Math.sin(vizState.animationTime * 3) * 0.25;
+                child.scale.set(scale, scale, scale);
+            }
+            // Original conjunction marker rotation (non-critical)
+            else if (child.type === 'Mesh' && child.geometry.type === 'OctahedronGeometry' && !child.userData?.isRotating) {
                 child.rotation.y += 0.02;
                 child.rotation.x += 0.01;
-                const scale = 1.0 + Math.sin(vizState.animationTime * 3) * 0.2;
+                const scale = 1.0 + Math.sin(vizState.animationTime * 3) * 0.15;
                 child.scale.set(scale, scale, scale);
             }
         });
@@ -1961,13 +2119,15 @@ function playScenarioFrames(scenario) {
         const pos2Raw = scenario.path_object2[frame];
         const dist = useCorrection ? scenario.distances_corrected[frame] : scenario.distances[frame];
 
+        const energySeries = scenario.specific_energy_j_per_kg;
         const frameData = {
             frame: frame,
             progress: frame / scenario.n_frames,
             object1_pos: pos1Raw,
             object2_pos: pos2Raw,
             distance_km: dist,
-            is_corrected: useCorrection
+            is_corrected: useCorrection,
+            specific_energy_j_per_kg: (energySeries && frame < energySeries.length) ? energySeries[frame] : null,
         };
 
         updateSimFrame(frameData);
@@ -1982,6 +2142,9 @@ function playScenarioFrames(scenario) {
 
         // Feed the left-sidebar live telemetry chart
         recordTelemetrySample(scenario, frame, dist);
+
+        // Update the catastrophic-threshold energy gauge (E_MR vs 40 J/g line)
+        updateCatastrophicGauge(frameData.specific_energy_j_per_kg, scenario);
 
         // Fire events at their scheduled frames
         while (eventIdx < scenario.events.length && scenario.events[eventIdx].frame <= frame) {
@@ -2053,6 +2216,81 @@ function resetTelemetryPanel() {
     if (eqDistEl) eqDistEl.textContent = '= -- km';
     if (eqVelEl) eqVelEl.textContent = '= -- km/s';
     drawTelemetryChart();
+    resetCatastrophicGauge();
+}
+
+// ============================================================================
+// CATASTROPHIC THRESHOLD GAUGE
+// ----------------------------------------------------------------------------
+// Physics: NASA Standard Breakup Model classifies a collision as
+// "catastrophic" (complete fragmentation of both bodies, vs. cratering /
+// partial damage) when the specific mass-normalized kinetic energy of the
+// encounter exceeds ~40 J/g:
+//
+//     E_MR = (m_p * v_rel^2) / (2 * m_t)   >   40 J/g  (= 40,000 J/kg)
+//
+// where m_p is the smaller ("projectile") mass, m_t the larger ("target")
+// mass, and v_rel the relative velocity at closest approach. This gauge
+// renders the live E_MR value against that catastrophic-fragmentation line
+// so a successful avoidance burn reads as "encounter energy kept under the
+// breakup threshold", not just "objects didn't touch".
+// See docs/physics.md and src/damage_minimization.collision_specific_energy().
+// ============================================================================
+
+function resetCatastrophicGauge() {
+    const fill = document.getElementById('catastrophic-fill');
+    const marker = document.getElementById('catastrophic-marker');
+    const valueEl = document.getElementById('catastrophic-value');
+    const statusEl = document.getElementById('catastrophic-status');
+    const eqEl = document.getElementById('physics-eq-emr');
+    if (fill) { fill.style.width = '0%'; fill.className = 'catastrophic-fill'; }
+    if (marker) marker.style.left = '0%';
+    if (valueEl) valueEl.textContent = '-- J/g';
+    if (statusEl) { statusEl.textContent = 'STANDBY'; statusEl.className = 'catastrophic-status-badge'; }
+    if (eqEl) eqEl.textContent = '= -- J/g';
+}
+
+/**
+ * Update the catastrophic-threshold horizontal bar gauge from the current
+ * frame's specific energy (J/kg, converted to J/g for display to match the
+ * 40 J/g convention used in the breakup-model literature).
+ */
+function updateCatastrophicGauge(specificEnergyJPerKg, scenario) {
+    const fill = document.getElementById('catastrophic-fill');
+    const valueEl = document.getElementById('catastrophic-value');
+    const statusEl = document.getElementById('catastrophic-status');
+    const eqEl = document.getElementById('physics-eq-emr');
+    if (!fill || specificEnergyJPerKg === null || specificEnergyJPerKg === undefined) return;
+
+    const thresholdJPerKg = (scenario && scenario.catastrophic_energy_threshold_j_per_kg) || 40000;
+    const eJPerG = specificEnergyJPerKg / 1000.0;
+    const thresholdJPerG = thresholdJPerKg / 1000.0;
+
+    // Scale the bar so the 40 J/g line sits at 60% of the track width,
+    // leaving room to visualize energies well above threshold too.
+    const scaleMax = thresholdJPerG / 0.6;
+    const pct = Math.max(0, Math.min(100, (eJPerG / scaleMax) * 100));
+
+    fill.style.width = pct.toFixed(1) + '%';
+
+    const isCatastrophic = specificEnergyJPerKg >= thresholdJPerKg;
+    fill.className = 'catastrophic-fill' + (isCatastrophic ? ' over-threshold' : '');
+
+    if (valueEl) valueEl.textContent = `${eJPerG.toFixed(1)} J/g`;
+    if (eqEl) eqEl.textContent = `= ${eJPerG.toFixed(1)} J/g`;
+
+    if (statusEl) {
+        if (isCatastrophic) {
+            statusEl.textContent = 'CATASTROPHIC';
+            statusEl.className = 'catastrophic-status-badge critical';
+        } else if (eJPerG > thresholdJPerG * 0.75) {
+            statusEl.textContent = 'APPROACHING';
+            statusEl.className = 'catastrophic-status-badge warning';
+        } else {
+            statusEl.textContent = 'BELOW THRESHOLD';
+            statusEl.className = 'catastrophic-status-badge success';
+        }
+    }
 }
 
 function recordTelemetrySample(scenario, frame, dist) {
@@ -2092,6 +2330,14 @@ function recordTelemetrySample(scenario, frame, dist) {
     else { proxLabel = 'CRITICAL'; proxClass = 'warning critical-text'; }
     if (proxEl) proxEl.textContent = proxLabel;
     if (proxEl) proxEl.className = 'telemetry-value ' + proxClass;
+
+    // Update telemetry hint to clarify the difference between current range and miss distance
+    const hintEl = document.getElementById('telemetry-hint');
+    if (hintEl && teleState.scenario) {
+        const missDistKm = teleState.scenario.min_distance_km?.toFixed(1) || '--';
+        hintEl.textContent = `Predicted miss distance (at TCA): ${missDistKm} km`;
+        hintEl.classList.remove('hidden');
+    }
 
     drawTelemetryChart();
 }

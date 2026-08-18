@@ -350,6 +350,99 @@ def compute_encounter_plane(state1_tca: StateVector,
     return miss_vector_2d, basis, projection_matrix
 
 
+def build_bplane_projection(state1_ref: StateVector,
+                             state2_ref: StateVector
+                             ) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Build the B-plane (encounter plane) basis and projection matrix from a
+    representative pair of states, nominally taken at or very near TCA.
+
+    The B-plane basis depends only on the relative velocity direction at
+    TCA, which changes slowly relative to the encounter timescale (minutes).
+    This means the *same* basis can be reused to project the entire
+    relative-position time history (before, during, and after an avoidance
+    burn) into 2D encounter-plane coordinates -- exactly what a live B-plane
+    display needs to stay geometrically consistent frame-to-frame.
+
+    Parameters
+    ----------
+    state1_ref, state2_ref : StateVector
+        Representative states of both objects (typically at/near TCA)
+
+    Returns
+    -------
+    basis : ndarray (3, 3)
+        [xi_hat, zeta_hat, relative_velocity_hat] encounter frame basis
+    projection_matrix : ndarray (2, 3)
+        Projects 3D relative position vectors into 2D (xi, zeta) B-plane
+        coordinates [km]
+    """
+    _, basis, projection_matrix = compute_encounter_plane(state1_ref, state2_ref)
+    return basis, projection_matrix
+
+
+def project_relative_position_series(positions1: np.ndarray,
+                                      positions2: np.ndarray,
+                                      projection_matrix: np.ndarray) -> np.ndarray:
+    """
+    Project a time series of relative positions into 2D B-plane coordinates.
+
+    miss_vector_2d(t) = P · (r1(t) - r2(t))
+
+    Parameters
+    ----------
+    positions1, positions2 : ndarray (N, 3)
+        Position time series for both objects [km], same inertial frame
+    projection_matrix : ndarray (2, 3)
+        B-plane projection matrix from build_bplane_projection()
+
+    Returns
+    -------
+    ndarray (N, 2)
+        Miss vector (r1 - r2) in B-plane (xi, zeta) coordinates at each
+        sample [km]
+    """
+    delta_r = np.asarray(positions1) - np.asarray(positions2)  # (N, 3)
+    return delta_r @ projection_matrix.T  # (N, 2)
+
+
+def covariance_ellipse_params(covariance_2d: np.ndarray,
+                               n_sigma: float = 3.0
+                               ) -> Tuple[float, float, float]:
+    """
+    Decompose a 2D covariance matrix into ellipse semi-axes and rotation
+    angle for rendering a standard n-sigma confidence ellipse on a B-plane
+    plot (the conventional CARA-style conjunction assessment display).
+
+    Parameters
+    ----------
+    covariance_2d : ndarray (2, 2)
+        Combined position covariance in the encounter plane [km²]
+    n_sigma : float
+        Confidence ellipse scale (3-sigma is standard for B-plane plots)
+
+    Returns
+    -------
+    semi_major_km, semi_minor_km : float
+        Ellipse semi-axis lengths [km]
+    angle_rad : float
+        Rotation of the semi-major axis from the xi-axis [radians]
+    """
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance_2d)
+    eigenvalues = np.maximum(eigenvalues, 0.0)
+
+    # Sort descending so index 0 is always the major axis
+    order = np.argsort(eigenvalues)[::-1]
+    eigenvalues = eigenvalues[order]
+    eigenvectors = eigenvectors[:, order]
+
+    semi_major_km = n_sigma * np.sqrt(eigenvalues[0])
+    semi_minor_km = n_sigma * np.sqrt(eigenvalues[1])
+    angle_rad = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0])
+
+    return semi_major_km, semi_minor_km, angle_rad
+
+
 def project_covariance_to_encounter_plane(
         cov1: np.ndarray, cov2: np.ndarray,
         projection_matrix: np.ndarray) -> np.ndarray:
@@ -457,6 +550,62 @@ def probability_of_collision_2d(miss_vector: np.ndarray,
     Pc /= (2 * np.pi * sigma_x * sigma_y)
 
     return np.clip(Pc, 0.0, 1.0)
+
+
+def probability_of_collision_foster(miss_vector: np.ndarray,
+                                     covariance_2d: np.ndarray,
+                                     combined_radius: float) -> float:
+    """
+    Fast closed-form Pc approximation (Foster's method).
+
+    Pc ≈ R² / (2·√|C|) · exp(-½ · mᵀC⁻¹m)
+
+    Valid when the combined hard-body radius R is small relative to the
+    encounter-plane covariance dispersion (the standard regime for
+    satellite-vs-satellite/debris conjunctions). This avoids the
+    O(n_r · n_theta) numerical grid integration used by
+    probability_of_collision_2d, making it cheap enough to evaluate every
+    animation frame for a live B-plane display.
+
+    Parameters
+    ----------
+    miss_vector : ndarray (2,)
+        Miss vector in encounter plane [km]
+    covariance_2d : ndarray (2, 2)
+        Combined position covariance in encounter plane [km²]
+    combined_radius : float
+        Sum of effective radii of both objects [km]
+
+    Returns
+    -------
+    float
+        Approximate probability of collision (0 to 1)
+
+    Notes
+    -----
+    Reference: Foster, J.L., "A Parametric Analysis of Orbital Debris
+    Collision Probability and Maneuver Rate for Space Vehicles", 1992.
+    This is an approximation for real-time/visualization use — the
+    conjunction-assessment decision pipeline (assess_conjunction,
+    compute_collision_probability) uses the full numerical integral
+    probability_of_collision_2d instead.
+    """
+    det_C = np.linalg.det(covariance_2d)
+    if det_C <= 0:
+        return 0.0
+
+    try:
+        C_inv = np.linalg.inv(covariance_2d)
+    except np.linalg.LinAlgError:
+        return 0.0
+
+    mahalanobis_sq = float(miss_vector @ C_inv @ miss_vector)
+    if mahalanobis_sq > 700:  # avoid exp() underflow
+        return 0.0
+
+    Pc = (combined_radius**2 / (2 * np.sqrt(det_C))) * np.exp(-0.5 * mahalanobis_sq)
+
+    return float(np.clip(Pc, 0.0, 1.0))
 
 
 def probability_of_collision_chan(miss_distance: float,
