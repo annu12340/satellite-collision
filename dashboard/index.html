@@ -70,6 +70,7 @@
                 </div>
             </div>
             <div class="header-right">
+                <a href="/maneuver-viz.html" style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:#06ffd0;text-decoration:none;padding:5px 10px;border:1px solid rgba(6,255,208,0.3);border-radius:4px;margin-right:12px;transition:all 0.2s ease;" onmouseover="this.style.background='rgba(6,255,208,0.1)'" onmouseout="this.style.background='transparent'">MANEUVER VIZ</a>
                 <div class="time-display">
                     <span id="utc-time"></span>
                     <span class="time-label">UTC</span>
@@ -138,21 +139,25 @@
                     </h3>
                     <canvas id="bplane-chart" width="260" height="220"></canvas>
                     <div class="bplane-readout">
-                        <div class="bplane-stat" title="Predicted relative position at TCA (Time of Closest Approach), projected onto the encounter plane">
+                        <div class="bplane-stat">
                             <span class="bplane-label">Miss (&xi;,&zeta;)</span>
                             <span class="bplane-value" id="bplane-miss">-- , -- km</span>
+                            <span class="bplane-desc">Predicted relative position at TCA</span>
                         </div>
-                        <div class="bplane-stat" title="99.7% confidence region of estimated position uncertainty (covariance ellipse semi-axes)">
+                        <div class="bplane-stat">
                             <span class="bplane-label">3&sigma; ellipse</span>
                             <span class="bplane-value" id="bplane-ellipse">-- &times; -- km</span>
+                            <span class="bplane-desc">99.7% position uncertainty region</span>
                         </div>
-                        <div class="bplane-stat" title="Hard Body Radius: combined physical collision radius of both objects">
+                        <div class="bplane-stat">
                             <span class="bplane-label">Combined HBR</span>
                             <span class="bplane-value" id="bplane-hbr">-- m</span>
+                            <span class="bplane-desc">Combined physical collision radius</span>
                         </div>
-                        <div class="bplane-stat" title="Probability of Collision: likelihood the miss vector falls within the HBR disk, given the uncertainty ellipse">
+                        <div class="bplane-stat">
                             <span class="bplane-label">P<sub>c</sub> estimate</span>
                             <span class="bplane-value" id="bplane-pc">--</span>
+                            <span class="bplane-desc">Probability of collision</span>
                         </div>
                     </div>
                     <div class="bplane-hint" id="bplane-hint">

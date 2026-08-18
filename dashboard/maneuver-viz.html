@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORBITAL SENTINEL - AI Maneuver Visualization</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #0f1520;
+            --bg-tertiary: #151c2c;
+            --bg-card: #1a2235;
+            --bg-card-hover: #1f2940;
+            --border-color: #1e2a42;
+            --border-glow: #2a3f66;
+            --text-primary: #e8edf5;
+            --text-secondary: #8b9cc0;
+            --text-muted: #5a6b8a;
+            --accent-blue: #00d4ff;
+            --accent-purple: #7b2ff7;
+            --accent-cyan: #06ffd0;
+            --risk-critical: #ff2d55;
+            --risk-high: #ff9500;
+            --risk-medium: #ffcc00;
+            --risk-low: #30d158;
+            --debris-purple: #b44dff;
+            --radius: 8px;
+            --radius-sm: 4px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 3px;
+            color: var(--text-primary);
+        }
+
+        .header-subtitle {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .header-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 10px;
+            background: rgba(48, 209, 88, 0.15);
+            color: var(--risk-low);
+            border: 1px solid rgba(48, 209, 88, 0.3);
+            animation: pulse-badge 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-badge {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            min-height: calc(100vh - 56px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Legend */
+        .legend-section {
+            margin-bottom: 24px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+        }
+
+        .legend-item:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-glow);
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .legend-dot::after {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 50%;
+            opacity: 0.3;
+        }
+
+        .legend-dot.safe { background: var(--risk-low); box-shadow: 0 0 8px var(--risk-low); }
+        .legend-dot.safe::after { background: var(--risk-low); }
+        .legend-dot.elevated { background: var(--risk-medium); box-shadow: 0 0 8px var(--risk-medium); }
+        .legend-dot.elevated::after { background: var(--risk-medium); }
+        .legend-dot.critical { background: var(--risk-critical); box-shadow: 0 0 8px var(--risk-critical); animation: pulse-dot 1.5s ease-in-out infinite; }
+        .legend-dot.critical::after { background: var(--risk-critical); }
+        .legend-dot.debris { background: var(--debris-purple); box-shadow: 0 0 8px var(--debris-purple); }
+        .legend-dot.debris::after { background: var(--debris-purple); }
+
+        @keyframes pulse-dot {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.7; }
+        }
+
+        .legend-text {
+            font-size: 0.72rem;
+            color: var(--text-primary);
+        }
+
+        .legend-desc {
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            margin-top: 1px;
+        }
+
+        /* Scenario Controls */
+        .controls-section {
+            margin-bottom: 24px;
+        }
+
+        .scenario-btn {
+            width: 100%;
+            padding: 10px 14px;
+            margin-bottom: 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s ease;
+        }
+
+        .scenario-btn:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 12px rgba(0, 212, 255, 0.1);
+        }
+
+        .scenario-btn.active {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .scenario-btn .btn-label {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+
+        .scenario-btn .btn-desc {
+            display: block;
+            font-size: 0.58rem;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        /* AI Decision Log */
+        .decision-log {
+            margin-top: 16px;
+        }
+
+        .log-entry {
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--accent-purple);
+            font-size: 0.62rem;
+            color: var(--text-secondary);
+            animation: fadeInUp 0.4s ease;
+        }
+
+        .log-entry.burn { border-left-color: #ff8800; }
+        .log-entry.success { border-left-color: var(--risk-low); }
+        .log-entry.danger { border-left-color: var(--risk-critical); }
+
+        .log-entry .log-time {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.55rem;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Canvas Area */
+        .canvas-area {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-primary);
+            overflow: hidden;
+        }
+
+        .canvas-area::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at center, rgba(0, 212, 255, 0.02) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        canvas#maneuver-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Status Overlay */
+        .status-overlay {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(15, 21, 32, 0.9);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            backdrop-filter: blur(8px);
+            min-width: 200px;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+
+        .status-label {
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .status-value.danger { color: var(--risk-critical); }
+        .status-value.safe { color: var(--risk-low); }
+
+        /* Phase indicator */
+        .phase-indicator {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 21, 32, 0.9);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 10px 20px;
+            backdrop-filter: blur(8px);
+            text-align: center;
+        }
+
+        .phase-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        .phase-label.before { color: var(--risk-critical); }
+        .phase-label.maneuver { color: var(--accent-blue); }
+        .phase-label.after { color: var(--risk-low); }
+
+        .phase-sublabel {
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <div class="header-title">ORBITAL SENTINEL</div>
+            <div class="header-subtitle">AI Maneuver Visualization</div>
+        </div>
+        <div class="header-badge">ACTIVE</div>
+    </div>
+
+    <div class="main-container">
+        <aside class="sidebar">
+            <!-- Legend -->
+            <div class="legend-section">
+                <div class="section-title"><span>&#127912;</span> Risk Status Indicators</div>
+                <div class="legend-item">
+                    <div class="legend-dot safe"></div>
+                    <div>
+                        <div class="legend-text">Safe Orbit</div>
+                        <div class="legend-desc">Pc &lt; 1e-6, no action needed</div>
+                    </div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot elevated"></div>
+                    <div>
+                        <div class="legend-text">Elevated Risk</div>
+                        <div class="legend-desc">1e-6 &lt; Pc &lt; 1e-4, monitoring</div>
+                    </div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot critical"></div>
+                    <div>
+                        <div class="legend-text">Critical Conjunction</div>
+                        <div class="legend-desc">Pc &gt; 1e-4, maneuver required</div>
+                    </div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot debris"></div>
+                    <div>
+                        <div class="legend-text">Predicted Debris Cloud</div>
+                        <div class="legend-desc">Post-collision fragment field</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scenario Controls -->
+            <div class="controls-section">
+                <div class="section-title"><span>&#128640;</span> Maneuver Scenarios</div>
+                <button class="scenario-btn active" id="btn-scenario-avoid" onclick="runScenario('avoid')">
+                    <span class="btn-label">Collision Avoidance</span>
+                    <span class="btn-desc">AI plans optimal delta-v burn to separate orbits</span>
+                </button>
+                <button class="scenario-btn" id="btn-scenario-multi" onclick="runScenario('multi')">
+                    <span class="btn-label">Multi-Conjunction</span>
+                    <span class="btn-desc">Single maneuver resolves 3 conjunctions</span>
+                </button>
+                <button class="scenario-btn" id="btn-scenario-debris" onclick="runScenario('debris')">
+                    <span class="btn-label">Debris Avoidance</span>
+                    <span class="btn-desc">Navigating through predicted debris cloud</span>
+                </button>
+            </div>
+
+            <!-- AI Decision Log -->
+            <div class="decision-log">
+                <div class="section-title"><span>&#129504;</span> AI Decision Log</div>
+                <div id="log-container"></div>
+            </div>
+        </aside>
+
+        <div class="canvas-area">
+            <canvas id="maneuver-canvas"></canvas>
+
+            <div class="status-overlay" id="status-overlay">
+                <div class="status-row">
+                    <span class="status-label">Separation</span>
+                    <span class="status-value" id="stat-separation">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Pc</span>
+                    <span class="status-value danger" id="stat-pc">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Delta-v</span>
+                    <span class="status-value" id="stat-dv">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Status</span>
+                    <span class="status-value" id="stat-status">STANDBY</span>
+                </div>
+            </div>
+
+            <div class="phase-indicator" id="phase-indicator">
+                <div class="phase-label before" id="phase-label">AWAITING SCENARIO</div>
+                <div class="phase-sublabel" id="phase-sublabel">Select a scenario to begin</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ========================================================================
+    // ANIMATED MANEUVER VISUALIZATION
+    // ========================================================================
+
+    const canvas = document.getElementById('maneuver-canvas');
+    const ctx = canvas.getContext('2d');
+
+    let animFrame = null;
+    let currentScenario = null;
+    let animTime = 0;
+    let phase = 'idle'; // idle, before, maneuver, after
+
+    // Resize canvas to fill container
+    function resizeCanvas() {
+        const container = canvas.parentElement;
+        canvas.width = container.clientWidth * window.devicePixelRatio;
+        canvas.height = container.clientHeight * window.devicePixelRatio;
+        canvas.style.width = container.clientWidth + 'px';
+        canvas.style.height = container.clientHeight + 'px';
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ========================================================================
+    // SCENARIO DEFINITIONS
+    // ========================================================================
+
+    const scenarios = {
+        avoid: {
+            name: 'Collision Avoidance',
+            sat1: { name: 'COMSAT-1', color: '#00d4ff', type: 'comsat' },
+            sat2: { name: 'COMSAT-2', color: '#ff9500', type: 'comsat' },
+            initialPc: 2.3e-3,
+            finalPc: 4.1e-8,
+            deltaV: 0.42,
+            initialSep: 12.4,
+            finalSep: 847.2,
+            maneuverDesc: 'Prograde burn +0.42 m/s at T-45min',
+        },
+        multi: {
+            name: 'Multi-Conjunction',
+            sat1: { name: 'EOS-7', color: '#7b2ff7', type: 'eos' },
+            sat2: { name: 'DEBRIS-142', color: '#8b9cc0', type: 'debris' },
+            sat3: { name: 'CUBE-19', color: '#06ffd0', type: 'cube' },
+            sat4: { name: 'DEBRIS-88', color: '#8b9cc0', type: 'debris' },
+            initialPc: 8.7e-4,
+            finalPc: 2.2e-7,
+            deltaV: 1.15,
+            initialSep: 5.8,
+            finalSep: 423.6,
+            maneuverDesc: 'Cross-track burn +1.15 m/s resolves 3 conjunctions',
+        },
+        debris: {
+            name: 'Debris Cloud Navigation',
+            sat1: { name: 'STARLINK-4421', color: '#00d4ff', type: 'comsat' },
+            debris: true,
+            initialPc: 5.6e-3,
+            finalPc: 1.1e-7,
+            deltaV: 0.88,
+            initialSep: 3.2,
+            finalSep: 612.0,
+            maneuverDesc: 'Anti-normal burn +0.88 m/s clears debris field',
+        },
+    };
+
+    // ========================================================================
+    // DRAWING UTILITIES
+    // ========================================================================
+
+    function getW() { return canvas.width / window.devicePixelRatio; }
+    function getH() { return canvas.height / window.devicePixelRatio; }
+
+    function drawStar(x, y, size, alpha) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Background starfield (seeded for consistency)
+    let stars = [];
+    function generateStars() {
+        stars = [];
+        for (let i = 0; i < 200; i++) {
+            stars.push({
+                x: Math.random(),
+                y: Math.random(),
+                size: 0.3 + Math.random() * 1.2,
+                alpha: 0.2 + Math.random() * 0.6,
+                twinkleSpeed: 0.5 + Math.random() * 2,
+            });
+        }
+    }
+    generateStars();
+
+    function drawStarfield(t) {
+        const w = getW(), h = getH();
+        stars.forEach(s => {
+            const alpha = s.alpha * (0.6 + 0.4 * Math.sin(t * s.twinkleSpeed));
+            drawStar(s.x * w, s.y * h, s.size, alpha);
+        });
+    }
+
+    // Draw a satellite with glow
+    function drawSatellite(x, y, color, label, riskLevel, size = 8) {
+        const w = getW();
+        // Glow
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 3);
+        gradient.addColorStop(0, color + '80');
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, size * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Risk indicator ring
+        let riskColor;
+        switch (riskLevel) {
+            case 'safe': riskColor = '#30d158'; break;
+            case 'elevated': riskColor = '#ffcc00'; break;
+            case 'critical': riskColor = '#ff2d55'; break;
+            case 'debris': riskColor = '#b44dff'; break;
+            default: riskColor = '#5a6b8a';
+        }
+
+        ctx.strokeStyle = riskColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, size + 4, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Pulsing ring for critical
+        if (riskLevel === 'critical') {
+            const pulseSize = size + 4 + Math.sin(animTime * 4) * 4;
+            ctx.strokeStyle = riskColor + '60';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(x, y, pulseSize, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Core dot
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Label
+        if (label) {
+            ctx.fillStyle = color;
+            ctx.font = '600 11px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x, y - size - 12);
+        }
+
+        // Risk emoji indicator
+        let emoji;
+        switch (riskLevel) {
+            case 'safe': emoji = '\ud83d\udfe2'; break;
+            case 'elevated': emoji = '\ud83d\udfe1'; break;
+            case 'critical': emoji = '\ud83d\udd34'; break;
+            case 'debris': emoji = '\ud83d\udfe3'; break;
+        }
+        if (emoji) {
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(emoji, x, y + size + 18);
+        }
+    }
+
+    // Draw a dashed orbit path
+    function drawOrbitPath(points, color, alpha = 0.4, dash = [6, 4]) {
+        if (points.length < 2) return;
+        ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(dash);
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Draw a solid trajectory (post-maneuver)
+    function drawTrajectory(points, color, alpha = 0.8, lineWidth = 2.5) {
+        if (points.length < 2) return;
+        ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
+    }
+
+    // Draw conjunction danger zone
+    function drawDangerZone(x, y, radius) {
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        gradient.addColorStop(0, 'rgba(255, 45, 85, 0.25)');
+        gradient.addColorStop(0.6, 'rgba(255, 45, 85, 0.08)');
+        gradient.addColorStop(1, 'rgba(255, 45, 85, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pulsing border
+        ctx.strokeStyle = `rgba(255, 45, 85, ${0.3 + Math.sin(animTime * 3) * 0.2})`;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Draw debris cloud particles
+    function drawDebrisCloud(cx, cy, radius, count, t) {
+        for (let i = 0; i < count; i++) {
+            const angle = (i / count) * Math.PI * 2 + t * 0.3;
+            const r = radius * (0.3 + 0.7 * ((i * 7 + 3) % 11) / 11);
+            const x = cx + Math.cos(angle) * r;
+            const y = cy + Math.sin(angle) * r;
+            const size = 1 + (i % 3);
+            const alpha = 0.3 + 0.4 * Math.sin(t * 2 + i);
+            ctx.fillStyle = `rgba(180, 77, 255, ${alpha})`;
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // Draw the collision warning line between two objects
+    function drawConjunctionLine(x1, y1, x2, y2, riskLevel, t) {
+        let color;
+        switch (riskLevel) {
+            case 'critical': color = '#ff2d55'; break;
+            case 'elevated': color = '#ffcc00'; break;
+            default: color = '#5a6b8a';
+        }
+
+        // Animated dashes
+        const dashOffset = t * 30;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.lineDashOffset = -dashOffset;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
+
+        // Midpoint warning icon
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        const pulseScale = 1 + Math.sin(t * 4) * 0.2;
+
+        ctx.fillStyle = color;
+        ctx.font = `${16 * pulseScale}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('\ud83d\udd34', mx, my);
+    }
+
+    // Draw burn exhaust effect
+    function drawBurnExhaust(x, y, angle, intensity, t) {
+        const numParticles = 12;
+        for (let i = 0; i < numParticles; i++) {
+            const spread = (Math.random() - 0.5) * 0.5;
+            const dist = (10 + Math.random() * 30) * intensity;
+            const px = x + Math.cos(angle + spread) * dist;
+            const py = y + Math.sin(angle + spread) * dist;
+            const size = (1 + Math.random() * 3) * intensity;
+            const alpha = (0.8 - dist / 40) * intensity;
+
+            if (alpha > 0) {
+                const gradient = ctx.createRadialGradient(px, py, 0, px, py, size);
+                gradient.addColorStop(0, `rgba(255, 200, 50, ${alpha})`);
+                gradient.addColorStop(1, `rgba(255, 100, 0, 0)`);
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(px, py, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
+    // ========================================================================
+    // SCENARIO ANIMATIONS
+    // ========================================================================
+
+    // Animation state
+    let anim = {
+        sat1: { x: 0, y: 0, targetX: 0, targetY: 0, risk: 'safe' },
+        sat2: { x: 0, y: 0, targetX: 0, targetY: 0, risk: 'safe' },
+        extras: [],
+        orbitPath1: [],
+        orbitPath2: [],
+        newPath1: [],
+        burnActive: false,
+        burnAngle: 0,
+        burnIntensity: 0,
+        conjunctionVisible: true,
+        debrisParticles: [],
+        phaseProgress: 0,
+        phaseDuration: 0,
+        phaseStart: 0,
+    };
+
+    function setPhase(newPhase, duration) {
+        phase = newPhase;
+        anim.phaseStart = animTime;
+        anim.phaseDuration = duration;
+        anim.phaseProgress = 0;
+        updatePhaseIndicator();
+    }
+
+    function updatePhaseIndicator() {
+        const label = document.getElementById('phase-label');
+        const sublabel = document.getElementById('phase-sublabel');
+
+        switch (phase) {
+            case 'before':
+                label.textContent = 'BEFORE MANEUVER';
+                label.className = 'phase-label before';
+                sublabel.textContent = 'Critical conjunction detected - AI analyzing options';
+                break;
+            case 'maneuver':
+                label.textContent = '\u2193 AI MANEUVER EXECUTING';
+                label.className = 'phase-label maneuver';
+                sublabel.textContent = currentScenario ? scenarios[currentScenario].maneuverDesc : '';
+                break;
+            case 'after':
+                label.textContent = 'AFTER MANEUVER';
+                label.className = 'phase-label after';
+                sublabel.textContent = 'Conjunction resolved - orbits safely separated';
+                break;
+            default:
+                label.textContent = 'AWAITING SCENARIO';
+                label.className = 'phase-label';
+                sublabel.textContent = 'Select a scenario to begin';
+        }
+    }
+
+    // Generate an elliptical orbit path
+    function generateOrbitPath(cx, cy, rx, ry, startAngle, endAngle, steps) {
+        const points = [];
+        for (let i = 0; i <= steps; i++) {
+            const t = startAngle + (endAngle - startAngle) * (i / steps);
+            points.push({
+                x: cx + Math.cos(t) * rx,
+                y: cy + Math.sin(t) * ry,
+            });
+        }
+        return points;
+    }
+
+    // ========================================================================
+    // RUN SCENARIO
+    // ========================================================================
+
+    function runScenario(id) {
+        // Reset
+        if (animFrame) cancelAnimationFrame(animFrame);
+        currentScenario = id;
+        animTime = 0;
+        phase = 'idle';
+
+        // Update button states
+        document.querySelectorAll('.scenario-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`btn-scenario-${id}`).classList.add('active');
+
+        // Clear log
+        document.getElementById('log-container').innerHTML = '';
+
+        const scenario = scenarios[id];
+        const w = getW(), h = getH();
+        const cx = w / 2, cy = h / 2;
+
+        // Setup initial positions based on scenario
+        if (id === 'avoid') {
+            setupAvoidScenario(cx, cy, w, h);
+        } else if (id === 'multi') {
+            setupMultiScenario(cx, cy, w, h);
+        } else if (id === 'debris') {
+            setupDebrisScenario(cx, cy, w, h);
+        }
+
+        // Start animation
+        setPhase('before', 4);
+        addLog('AI system detected critical conjunction', 'danger');
+
+        setTimeout(() => addLog(`Pc = ${scenario.initialPc.toExponential(1)} - exceeds threshold`, 'danger'), 800);
+        setTimeout(() => addLog('Computing optimal avoidance maneuver...', ''), 1600);
+        setTimeout(() => {
+            addLog(`Solution: ${scenario.maneuverDesc}`, 'burn');
+            setPhase('maneuver', 3);
+            anim.burnActive = true;
+            updateStats('maneuver');
+        }, 4000);
+        setTimeout(() => {
+            anim.burnActive = false;
+            setPhase('after', 999);
+            addLog('Maneuver complete - verifying separation', 'success');
+            updateStats('after');
+        }, 7000);
+        setTimeout(() => {
+            addLog(`Final Pc = ${scenario.finalPc.toExponential(1)} - conjunction resolved`, 'success');
+        }, 8000);
+
+        animate();
+    }
+
+    function setupAvoidScenario(cx, cy, w, h) {
+        // Two satellites on converging paths
+        anim.sat1 = { x: cx - 200, y: cy - 30, risk: 'critical' };
+        anim.sat2 = { x: cx + 200, y: cy + 30, risk: 'critical' };
+        anim.extras = [];
+        anim.conjunctionVisible = true;
+
+        // Generate converging orbit paths
+        anim.orbitPath1 = generateOrbitPath(cx, cy + 100, 280, 120, Math.PI, 0, 40);
+        anim.orbitPath2 = generateOrbitPath(cx, cy - 100, 280, 120, Math.PI, 0, 40);
+
+        // Post-maneuver diverging path
+        anim.newPath1 = [];
+        anim.debrisParticles = [];
+    }
+
+    function setupMultiScenario(cx, cy, w, h) {
+        anim.sat1 = { x: cx, y: cy, risk: 'critical' };
+        anim.sat2 = { x: cx + 150, y: cy - 80, risk: 'elevated' };
+        anim.extras = [
+            { x: cx - 120, y: cy + 100, risk: 'elevated', name: 'CUBE-19', color: '#06ffd0' },
+            { x: cx + 80, y: cy + 130, risk: 'elevated', name: 'DEBRIS-88', color: '#8b9cc0' },
+        ];
+        anim.conjunctionVisible = true;
+        anim.orbitPath1 = generateOrbitPath(cx, cy, 200, 160, 0, Math.PI * 2, 60);
+        anim.orbitPath2 = generateOrbitPath(cx + 50, cy - 40, 180, 130, 0, Math.PI * 2, 60);
+        anim.newPath1 = [];
+        anim.debrisParticles = [];
+    }
+
+    function setupDebrisScenario(cx, cy, w, h) {
+        anim.sat1 = { x: cx - 180, y: cy, risk: 'critical' };
+        anim.sat2 = { x: cx + 100, y: cy, risk: 'debris' };
+        anim.extras = [];
+        anim.conjunctionVisible = true;
+        anim.orbitPath1 = generateOrbitPath(cx, cy, 260, 80, Math.PI * 0.8, Math.PI * 0.2, 40);
+        anim.orbitPath2 = [];
+        anim.newPath1 = [];
+
+        // Generate debris cloud
+        anim.debrisParticles = [];
+        for (let i = 0; i < 40; i++) {
+            anim.debrisParticles.push({
+                angle: Math.random() * Math.PI * 2,
+                radius: 30 + Math.random() * 70,
+                size: 1 + Math.random() * 2.5,
+                speed: 0.2 + Math.random() * 0.8,
+            });
+        }
+    }
+
+    // ========================================================================
+    // UPDATE STATS
+    // ========================================================================
+
+    function updateStats(phase) {
+        const scenario = scenarios[currentScenario];
+        const sepEl = document.getElementById('stat-separation');
+        const pcEl = document.getElementById('stat-pc');
+        const dvEl = document.getElementById('stat-dv');
+        const statusEl = document.getElementById('stat-status');
+
+        if (phase === 'before' || phase === 'idle') {
+            sepEl.textContent = scenario ? scenario.initialSep.toFixed(1) + ' km' : '--';
+            pcEl.textContent = scenario ? scenario.initialPc.toExponential(1) : '--';
+            pcEl.className = 'status-value danger';
+            dvEl.textContent = '--';
+            statusEl.textContent = 'CRITICAL';
+            statusEl.className = 'status-value danger';
+        } else if (phase === 'maneuver') {
+            sepEl.textContent = '...';
+            pcEl.textContent = '...';
+            pcEl.className = 'status-value';
+            dvEl.textContent = scenario.deltaV.toFixed(2) + ' m/s';
+            statusEl.textContent = 'BURNING';
+            statusEl.className = 'status-value';
+        } else if (phase === 'after') {
+            sepEl.textContent = scenario.finalSep.toFixed(1) + ' km';
+            pcEl.textContent = scenario.finalPc.toExponential(1);
+            pcEl.className = 'status-value safe';
+            dvEl.textContent = scenario.deltaV.toFixed(2) + ' m/s';
+            statusEl.textContent = 'SAFE';
+            statusEl.className = 'status-value safe';
+        }
+    }
+
+    // ========================================================================
+    // LOGGING
+    // ========================================================================
+
+    function addLog(message, type) {
+        const container = document.getElementById('log-container');
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type || ''}`;
+        const time = animTime.toFixed(1);
+        entry.innerHTML = `<span class="log-time">T+${time}s</span>${message}`;
+        container.appendChild(entry);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // ========================================================================
+    // MAIN ANIMATION LOOP
+    // ========================================================================
+
+    function animate() {
+        animFrame = requestAnimationFrame(animate);
+        const dt = 1 / 60;
+        animTime += dt;
+
+        // Update phase progress
+        if (phase !== 'idle') {
+            anim.phaseProgress = Math.min(1, (animTime - anim.phaseStart) / anim.phaseDuration);
+        }
+
+        // Update positions based on phase
+        updatePositions();
+
+        // Render
+        render();
+    }
+
+    function updatePositions() {
+        const w = getW(), h = getH();
+        const cx = w / 2, cy = h / 2;
+        const scenario = scenarios[currentScenario];
+        if (!scenario) return;
+
+        if (currentScenario === 'avoid') {
+            if (phase === 'before') {
+                // Satellites converge toward center
+                const t = anim.phaseProgress;
+                anim.sat1.x = cx - 200 + t * 140;
+                anim.sat1.y = cy - 30 + t * 20;
+                anim.sat2.x = cx + 200 - t * 140;
+                anim.sat2.y = cy + 30 - t * 20;
+            } else if (phase === 'maneuver') {
+                // Sat1 starts diverging upward (the burn)
+                const t = anim.phaseProgress;
+                const eased = 1 - Math.pow(1 - t, 3);
+                anim.sat1.x = cx - 60 + eased * 30;
+                anim.sat1.y = cy - 10 - eased * 120;
+                anim.sat2.x = cx + 60;
+                anim.sat2.y = cy + 50 + t * 20;
+
+                // Build the new trajectory path progressively
+                if (t < 1) {
+                    const pathLen = Math.floor(t * 30);
+                    anim.newPath1 = [];
+                    for (let i = 0; i <= pathLen; i++) {
+                        const frac = i / 30;
+                        anim.newPath1.push({
+                            x: cx - 60 + frac * 260,
+                            y: cy - 10 - Math.sin(frac * Math.PI) * 140,
+                        });
+                    }
+                }
+
+                // Update risks
+                anim.sat1.risk = t > 0.5 ? 'safe' : 'elevated';
+                anim.sat2.risk = t > 0.5 ? 'safe' : 'elevated';
+                anim.conjunctionVisible = t < 0.6;
+            } else if (phase === 'after') {
+                // Satellites continue separating
+                const t = Math.min(anim.phaseProgress * 2, 1);
+                anim.sat1.x = cx - 30 + t * 100;
+                anim.sat1.y = cy - 130 - t * 40;
+                anim.sat2.x = cx + 60 + t * 80;
+                anim.sat2.y = cy + 70 + t * 30;
+                anim.sat1.risk = 'safe';
+                anim.sat2.risk = 'safe';
+                anim.conjunctionVisible = false;
+            }
+        } else if (currentScenario === 'multi') {
+            if (phase === 'before') {
+                const t = anim.phaseProgress;
+                // All objects converge slightly
+                anim.sat1.x = cx + Math.sin(animTime * 0.5) * 5;
+                anim.sat1.y = cy + Math.cos(animTime * 0.5) * 5;
+                anim.sat2.x = cx + 150 - t * 40;
+                anim.sat2.y = cy - 80 + t * 20;
+                if (anim.extras[0]) {
+                    anim.extras[0].x = cx - 120 + t * 30;
+                    anim.extras[0].y = cy + 100 - t * 25;
+                }
+                if (anim.extras[1]) {
+                    anim.extras[1].x = cx + 80 - t * 15;
+                    anim.extras[1].y = cy + 130 - t * 30;
+                }
+            } else if (phase === 'maneuver') {
+                const t = anim.phaseProgress;
+                const eased = 1 - Math.pow(1 - t, 3);
+                // Central sat moves away from all threats
+                anim.sat1.x = cx - eased * 150;
+                anim.sat1.y = cy - eased * 80;
+                anim.sat1.risk = t > 0.6 ? 'safe' : 'elevated';
+                anim.sat2.risk = t > 0.5 ? 'safe' : 'elevated';
+                if (anim.extras[0]) anim.extras[0].risk = t > 0.7 ? 'safe' : 'elevated';
+                if (anim.extras[1]) anim.extras[1].risk = t > 0.7 ? 'safe' : 'elevated';
+                anim.conjunctionVisible = t < 0.5;
+
+                // Build new path
+                const pathLen = Math.floor(t * 25);
+                anim.newPath1 = [];
+                for (let i = 0; i <= pathLen; i++) {
+                    const frac = i / 25;
+                    anim.newPath1.push({
+                        x: cx - frac * 180,
+                        y: cy - Math.sin(frac * Math.PI * 0.8) * 100,
+                    });
+                }
+            } else if (phase === 'after') {
+                const t = Math.min(anim.phaseProgress, 1);
+                anim.sat1.x = cx - 150 - t * 50;
+                anim.sat1.y = cy - 80 - t * 20;
+                anim.sat1.risk = 'safe';
+                anim.sat2.risk = 'safe';
+                if (anim.extras[0]) anim.extras[0].risk = 'safe';
+                if (anim.extras[1]) anim.extras[1].risk = 'safe';
+                anim.conjunctionVisible = false;
+            }
+        } else if (currentScenario === 'debris') {
+            const debrisCx = cx + 100, debrisCy = cy;
+            if (phase === 'before') {
+                const t = anim.phaseProgress;
+                anim.sat1.x = cx - 180 + t * 100;
+                anim.sat1.y = cy;
+            } else if (phase === 'maneuver') {
+                const t = anim.phaseProgress;
+                const eased = 1 - Math.pow(1 - t, 3);
+                // Satellite curves upward to avoid debris cloud
+                anim.sat1.x = cx - 80 + eased * 60;
+                anim.sat1.y = cy - eased * 150;
+                anim.sat1.risk = t > 0.5 ? 'safe' : 'elevated';
+                anim.conjunctionVisible = t < 0.4;
+
+                // Build curved avoidance path
+                const pathLen = Math.floor(t * 30);
+                anim.newPath1 = [];
+                for (let i = 0; i <= pathLen; i++) {
+                    const frac = i / 30;
+                    anim.newPath1.push({
+                        x: cx - 80 + frac * 200,
+                        y: cy - Math.sin(frac * Math.PI) * 160,
+                    });
+                }
+            } else if (phase === 'after') {
+                const t = Math.min(anim.phaseProgress * 2, 1);
+                anim.sat1.x = cx - 20 + t * 120;
+                anim.sat1.y = cy - 150 + t * 30;
+                anim.sat1.risk = 'safe';
+                anim.conjunctionVisible = false;
+            }
+        }
+    }
+
+    // ========================================================================
+    // RENDER FRAME
+    // ========================================================================
+
+    function render() {
+        const w = getW(), h = getH();
+        const cx = w / 2, cy = h / 2;
+
+        // Clear
+        ctx.clearRect(0, 0, w, h);
+
+        // Background
+        ctx.fillStyle = '#0a0e17';
+        ctx.fillRect(0, 0, w, h);
+
+        // Starfield
+        drawStarfield(animTime);
+
+        // Grid (subtle)
+        ctx.strokeStyle = 'rgba(30, 42, 66, 0.3)';
+        ctx.lineWidth = 0.5;
+        for (let x = 0; x < w; x += 60) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, h);
+            ctx.stroke();
+        }
+        for (let y = 0; y < h; y += 60) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+        }
+
+        if (!currentScenario) return;
+
+        const scenario = scenarios[currentScenario];
+
+        // Draw orbit paths (dashed, faded - original trajectories)
+        if (anim.orbitPath1.length > 0) {
+            drawOrbitPath(anim.orbitPath1, scenario.sat1.color, 0.25);
+        }
+        if (anim.orbitPath2.length > 0) {
+            const color2 = currentScenario === 'multi' ? scenario.sat2.color :
+                           currentScenario === 'debris' ? '#b44dff' : scenario.sat2.color;
+            drawOrbitPath(anim.orbitPath2, color2, 0.2);
+        }
+
+        // Draw new trajectory (animated, solid, bright)
+        if (anim.newPath1.length > 1) {
+            drawTrajectory(anim.newPath1, '#06ffd0', 0.9, 3);
+
+            // Glow effect on new path
+            ctx.shadowColor = '#06ffd0';
+            ctx.shadowBlur = 8;
+            drawTrajectory(anim.newPath1, '#06ffd0', 0.4, 1);
+            ctx.shadowBlur = 0;
+        }
+
+        // Danger zone at conjunction point
+        if (anim.conjunctionVisible && phase !== 'after') {
+            const dzX = (anim.sat1.x + anim.sat2.x) / 2;
+            const dzY = (anim.sat1.y + anim.sat2.y) / 2;
+            drawDangerZone(dzX, dzY, 60);
+        }
+
+        // Debris cloud (for debris scenario)
+        if (currentScenario === 'debris' && anim.debrisParticles.length > 0) {
+            const debrisCx = cx + 100, debrisCy = cy;
+            drawDebrisCloud(debrisCx, debrisCy, 80, anim.debrisParticles.length, animTime);
+
+            // Debris risk indicator
+            const debrisRisk = phase === 'after' ? 'safe' : 'debris';
+            drawSatellite(debrisCx, debrisCy, '#b44dff', 'DEBRIS FIELD', debrisRisk, 5);
+        }
+
+        // Conjunction line
+        if (anim.conjunctionVisible) {
+            const risk = phase === 'before' ? 'critical' : 'elevated';
+            drawConjunctionLine(
+                anim.sat1.x, anim.sat1.y,
+                anim.sat2.x, anim.sat2.y,
+                risk, animTime
+            );
+        }
+
+        // Extra objects (multi-conjunction scenario)
+        anim.extras.forEach(extra => {
+            drawSatellite(extra.x, extra.y, extra.color, extra.name, extra.risk, 6);
+            if (anim.conjunctionVisible) {
+                drawConjunctionLine(anim.sat1.x, anim.sat1.y, extra.x, extra.y, 'elevated', animTime);
+            }
+        });
+
+        // Burn exhaust
+        if (anim.burnActive) {
+            const burnAngle = Math.PI; // exhaust goes backward
+            drawBurnExhaust(anim.sat1.x, anim.sat1.y, burnAngle, 0.8, animTime);
+            drawBurnExhaust(anim.sat1.x, anim.sat1.y, burnAngle + 0.3, 0.4, animTime * 1.3);
+            drawBurnExhaust(anim.sat1.x, anim.sat1.y, burnAngle - 0.3, 0.4, animTime * 0.8);
+        }
+
+        // Draw satellites
+        drawSatellite(anim.sat1.x, anim.sat1.y, scenario.sat1.color, scenario.sat1.name, anim.sat1.risk, 10);
+
+        if (currentScenario !== 'debris') {
+            drawSatellite(anim.sat2.x, anim.sat2.y, scenario.sat2.color, scenario.sat2.name, anim.sat2.risk, 9);
+        }
+
+        // Draw the "BEFORE/AFTER" ASCII art overlay during transitions
+        if (phase === 'maneuver' && anim.phaseProgress > 0.3 && anim.phaseProgress < 0.7) {
+            drawManeuverLabel(cx, cy - h * 0.35);
+        }
+    }
+
+    // Draw the stylized maneuver indicator text
+    function drawManeuverLabel(x, y) {
+        const alpha = Math.sin((anim.phaseProgress - 0.3) / 0.4 * Math.PI);
+        ctx.fillStyle = `rgba(0, 212, 255, ${alpha * 0.8})`;
+        ctx.font = '700 14px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('\u25BC AI MANEUVER \u25BC', x, y);
+
+        // Animated arrow
+        const arrowY = y + 14 + Math.sin(animTime * 6) * 4;
+        ctx.fillStyle = `rgba(6, 255, 208, ${alpha * 0.6})`;
+        ctx.font = '18px sans-serif';
+        ctx.fillText('\u2193', x, arrowY);
+    }
+
+    // ========================================================================
+    // INITIAL STATE
+    // ========================================================================
+
+    function renderIdle() {
+        const w = getW(), h = getH();
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#0a0e17';
+        ctx.fillRect(0, 0, w, h);
+        drawStarfield(animTime);
+
+        // Draw demo satellites in idle state
+        const cx = w / 2, cy = h / 2;
+
+        // Show the example layout from the prompt
+        drawSatellite(cx - 120, cy - 30, '#00d4ff', 'COMSAT-1', 'safe', 9);
+        drawSatellite(cx + 120, cy + 30, '#ff9500', 'COMSAT-2', 'safe', 9);
+        drawSatellite(cx - 80, cy + 120, '#7b2ff7', 'EOS-3', 'elevated', 7);
+        drawSatellite(cx + 160, cy - 80, '#8b9cc0', 'DEBRIS-47', 'debris', 6);
+
+        // Sample orbit arcs
+        const path1 = generateOrbitPath(cx, cy + 50, 200, 80, Math.PI * 0.7, Math.PI * 0.3, 30);
+        const path2 = generateOrbitPath(cx + 40, cy - 30, 180, 100, Math.PI * 1.2, Math.PI * 0.6, 30);
+        drawOrbitPath(path1, '#00d4ff', 0.2);
+        drawOrbitPath(path2, '#ff9500', 0.2);
+
+        animFrame = requestAnimationFrame(function idleLoop() {
+            animTime += 1/60;
+            renderIdle();
+        });
+    }
+
+    // Start with idle animation
+    updatePhaseIndicator();
+    updateStats('idle');
+    renderIdle();
+    </script>
+</body>
+</html>

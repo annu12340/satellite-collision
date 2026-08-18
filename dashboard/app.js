@@ -3659,6 +3659,160 @@ function flashDangerIndicator() {
 
 
 // ============================================================================
+// AUTONOMOUS DECISION ENGINE PANEL
+// ============================================================================
+
+let decisionEngineData = null;
+
+function initDecisionEngine() {
+    const refreshBtn = document.getElementById('de-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', fetchDecisionEngine);
+    }
+    // Initial fetch
+    fetchDecisionEngine();
+}
+
+async function fetchDecisionEngine() {
+    const statusEl = document.getElementById('de-status');
+    const refreshBtn = document.getElementById('de-refresh-btn');
+
+    if (statusEl) {
+        statusEl.textContent = 'SOLVING...';
+        statusEl.className = 'sim-status-badge running';
+    }
+    if (refreshBtn) refreshBtn.disabled = true;
+
+    try {
+        const res = await fetch('/api/decision-engine');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        decisionEngineData = await res.json();
+        renderDecisionEngine(decisionEngineData);
+
+        if (statusEl) {
+            statusEl.textContent = 'LIVE';
+            statusEl.className = 'sim-status-badge live';
+        }
+    } catch (err) {
+        console.warn('Decision engine fetch failed:', err);
+        if (statusEl) {
+            statusEl.textContent = 'ERROR';
+            statusEl.className = 'sim-status-badge error';
+        }
+    } finally {
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+}
+
+function renderDecisionEngine(data) {
+    if (!data || data.error) return;
+
+    const { situation, candidates, recommended, optimizer_metadata } = data;
+
+    // Situation summary
+    const threatsEl = document.getElementById('de-threats');
+    const methodEl = document.getElementById('de-method');
+    const solveTimeEl = document.getElementById('de-solve-time');
+
+    if (threatsEl) {
+        const critical = situation.critical_threats;
+        const high = situation.high_threats;
+        const total = situation.active_threats;
+        threatsEl.innerHTML = `<strong>${total}</strong> <span class="de-threat-breakdown">(${critical} crit, ${high} high)</span>`;
+    }
+    if (methodEl) {
+        methodEl.textContent = recommended.strategy.replace('_', ' ').toUpperCase();
+        methodEl.className = 'de-sit-value de-strategy-badge de-strat-' + recommended.strategy;
+    }
+    if (solveTimeEl) {
+        const ms = optimizer_metadata.total_solve_time_ms;
+        solveTimeEl.textContent = ms > 1000 ? (ms / 1000).toFixed(1) + 's' : ms.toFixed(0) + 'ms';
+    }
+
+    // Candidates table
+    const container = document.getElementById('de-candidates');
+    if (container) {
+        let html = `
+            <div class="de-candidate-row de-candidate-header-row">
+                <span class="de-cand-id"></span>
+                <span class="de-cand-label">Action</span>
+                <span class="de-cand-risk">Risk</span>
+                <span class="de-cand-fuel">\u0394v</span>
+            </div>
+        `;
+
+        candidates.forEach((cand) => {
+            const isRec = cand.id === recommended.candidate_id;
+            const riskDisplay = cand.residual_risk > 0
+                ? cand.residual_risk.toFixed(1)
+                : '0';
+            const fuelDisplay = cand.fuel_cost_ms > 0
+                ? cand.fuel_cost_ms.toFixed(1)
+                : '--';
+
+            // Shorten the label for display
+            let shortLabel = cand.label;
+            if (shortLabel.length > 30) {
+                shortLabel = shortLabel.substring(0, 28) + '\u2026';
+            }
+
+            html += `
+                <div class="de-candidate-row ${isRec ? 'de-recommended-row' : ''} ${cand.strategy === 'none' ? 'de-baseline-row' : ''}">
+                    <span class="de-cand-id">${cand.id}</span>
+                    <span class="de-cand-label" title="${cand.label}">${shortLabel}</span>
+                    <span class="de-cand-risk">${riskDisplay}</span>
+                    <span class="de-cand-fuel">${fuelDisplay}</span>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    // Recommendation details
+    const recActionEl = document.getElementById('de-rec-action');
+    const recRiskEl = document.getElementById('de-rec-risk-red');
+    const recFuelEl = document.getElementById('de-rec-fuel');
+    const recResolvedEl = document.getElementById('de-rec-resolved');
+    const recReasonEl = document.getElementById('de-rec-reason');
+
+    const rec = candidates[recommended.candidate_index];
+
+    if (recActionEl && rec) {
+        if (rec.maneuvers && rec.maneuvers.length > 0) {
+            const primary = rec.maneuvers[0];
+            const name = primary.spacecraft_name || primary.spacecraft_id;
+            const shortName = name.length > 14 ? name.substring(0, 12) + '\u2026' : name;
+            let actionText = `${shortName} \u2192 ${primary.delta_v_ms.toFixed(1)} m/s`;
+            if (rec.maneuvers.length > 1) {
+                actionText += ` (+${rec.maneuvers.length - 1} more)`;
+            }
+            recActionEl.textContent = actionText;
+        } else {
+            recActionEl.textContent = 'No action required';
+        }
+    }
+
+    if (recRiskEl) {
+        recRiskEl.textContent = recommended.risk_reduction_pct.toFixed(0) + '%';
+        recRiskEl.className = 'de-rec-metric-value' +
+            (recommended.risk_reduction_pct > 50 ? ' de-good' : '');
+    }
+    if (recFuelEl) {
+        recFuelEl.textContent = `${recommended.fuel_consumed_ms.toFixed(1)} / ${recommended.fuel_budget_total_ms.toFixed(0)} m/s`;
+    }
+    if (recResolvedEl) {
+        const change = recommended.secondary_threats_change;
+        const changeStr = change < 0 ? ` (${change} secondary)` : '';
+        recResolvedEl.textContent = `${recommended.conjunctions_resolved}${changeStr}`;
+    }
+    if (recReasonEl) {
+        recReasonEl.textContent = recommended.reason;
+    }
+}
+
+
+// ============================================================================
 // START
 // ============================================================================
 
