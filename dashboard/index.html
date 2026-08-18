@@ -231,6 +231,8 @@
 
             </aside>
 
+            <!-- Center Column: Viewport + Bottom Section -->
+            <div class="center-column">
             <!-- 3D Viewport -->
             <main class="viewport-container">
                 <!-- View mode label with toggle (top-right) -->
@@ -317,74 +319,119 @@
                 </div>
             </main>
 
+                <!-- 🧠 AUTONOMOUS DECISION ENGINE (Bottom Middle) -->
+                <div class="bottom-middle-section">
+                    <div class="decision-engine-panel decision-engine-bottom">
+                        <h3 class="section-title">
+                            <span class="title-icon">&#129504;</span>
+                            Autonomous Decision Engine
+                            <span class="sim-status-badge idle" id="de-status">IDLE</span>
+                        </h3>
+
+                        <div class="de-bottom-layout">
+                            <!-- Situation Summary -->
+                            <div class="de-situation" id="de-situation">
+                                <div class="de-situation-row">
+                                    <span class="de-sit-label">Active threats</span>
+                                    <span class="de-sit-value" id="de-threats">--</span>
+                                </div>
+                                <div class="de-situation-row">
+                                    <span class="de-sit-label">Strategy</span>
+                                    <span class="de-sit-value de-strategy-badge" id="de-method">--</span>
+                                </div>
+                                <div class="de-situation-row">
+                                    <span class="de-sit-label">Solve time</span>
+                                    <span class="de-sit-value" id="de-solve-time">--</span>
+                                </div>
+                            </div>
+
+                            <!-- Strategy Race Animation -->
+                            <div class="de-race-container" id="de-race-container">
+                                <div class="de-race-header">Strategy Race</div>
+                                <div class="de-race-lanes">
+                                    <div class="de-race-lane" data-strategy="none">
+                                        <span class="de-race-label">None</span>
+                                        <div class="de-race-track">
+                                            <div class="de-race-bar"></div>
+                                        </div>
+                                        <span class="de-race-result"></span>
+                                    </div>
+                                    <div class="de-race-lane" data-strategy="greedy">
+                                        <span class="de-race-label">Greedy</span>
+                                        <div class="de-race-track">
+                                            <div class="de-race-bar"></div>
+                                        </div>
+                                        <span class="de-race-result"></span>
+                                    </div>
+                                    <div class="de-race-lane" data-strategy="network_flow">
+                                        <span class="de-race-label">Net Flow</span>
+                                        <div class="de-race-track">
+                                            <div class="de-race-bar"></div>
+                                        </div>
+                                        <span class="de-race-result"></span>
+                                    </div>
+                                    <div class="de-race-lane" data-strategy="mcts">
+                                        <span class="de-race-label">MCTS</span>
+                                        <div class="de-race-track">
+                                            <div class="de-race-bar"></div>
+                                        </div>
+                                        <span class="de-race-result"></span>
+                                    </div>
+                                </div>
+                                <div class="de-race-winner" id="de-race-winner"></div>
+                            </div>
+
+                            <!-- Candidate Actions Table -->
+                            <div class="de-candidates-section">
+                                <div class="de-candidates-header">Candidate Actions</div>
+                                <div class="de-candidates" id="de-candidates">
+                                    <div class="de-candidate-row de-candidate-header-row">
+                                        <span class="de-cand-id"></span>
+                                        <span class="de-cand-label">Action</span>
+                                        <span class="de-cand-risk">Risk</span>
+                                        <span class="de-cand-fuel">Fuel</span>
+                                    </div>
+                                    <div class="de-candidate-row de-placeholder">
+                                        <span class="de-cand-msg">Awaiting optimization...</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Recommendation -->
+                            <div class="de-recommendation" id="de-recommendation">
+                                <div class="de-rec-header">
+                                    <span class="de-rec-star">&#9733;</span>
+                                    <span>RECOMMENDED</span>
+                                </div>
+                                <div class="de-rec-action" id="de-rec-action">--</div>
+                                <div class="de-rec-metrics">
+                                    <div class="de-rec-metric">
+                                        <span class="de-rec-metric-label">Risk reduction</span>
+                                        <span class="de-rec-metric-value" id="de-rec-risk-red">--%</span>
+                                    </div>
+                                    <div class="de-rec-metric">
+                                        <span class="de-rec-metric-label">Fuel consumed</span>
+                                        <span class="de-rec-metric-value" id="de-rec-fuel">-- / -- m/s</span>
+                                    </div>
+                                    <div class="de-rec-metric">
+                                        <span class="de-rec-metric-label">Threats resolved</span>
+                                        <span class="de-rec-metric-value" id="de-rec-resolved">--</span>
+                                    </div>
+                                </div>
+                                <div class="de-rec-reason" id="de-rec-reason">--</div>
+                            </div>
+
+                            <!-- Refresh button -->
+                            <div class="de-refresh-section">
+                                <button class="de-refresh-btn" id="de-refresh-btn">&#8635; Re-optimize</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Right Panel -->
             <aside class="panel panel-right">
-                <!-- 🧠 AUTONOMOUS DECISION ENGINE -->
-                <div class="panel-section decision-engine-panel">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#129504;</span>
-                        Autonomous Decision Engine
-                        <span class="sim-status-badge idle" id="de-status">IDLE</span>
-                    </h3>
-
-                    <!-- Situation Summary -->
-                    <div class="de-situation" id="de-situation">
-                        <div class="de-situation-row">
-                            <span class="de-sit-label">Active threats</span>
-                            <span class="de-sit-value" id="de-threats">--</span>
-                        </div>
-                        <div class="de-situation-row">
-                            <span class="de-sit-label">Strategy</span>
-                            <span class="de-sit-value de-strategy-badge" id="de-method">--</span>
-                        </div>
-                        <div class="de-situation-row">
-                            <span class="de-sit-label">Solve time</span>
-                            <span class="de-sit-value" id="de-solve-time">--</span>
-                        </div>
-                    </div>
-
-                    <!-- Candidate Actions Table -->
-                    <div class="de-candidates-header">Candidate Actions</div>
-                    <div class="de-candidates" id="de-candidates">
-                        <div class="de-candidate-row de-candidate-header-row">
-                            <span class="de-cand-id"></span>
-                            <span class="de-cand-label">Action</span>
-                            <span class="de-cand-risk">Risk</span>
-                            <span class="de-cand-fuel">Fuel</span>
-                        </div>
-                        <div class="de-candidate-row de-placeholder">
-                            <span class="de-cand-msg">Awaiting optimization...</span>
-                        </div>
-                    </div>
-
-                    <!-- Recommendation -->
-                    <div class="de-recommendation" id="de-recommendation">
-                        <div class="de-rec-header">
-                            <span class="de-rec-star">&#9733;</span>
-                            <span>RECOMMENDED</span>
-                        </div>
-                        <div class="de-rec-action" id="de-rec-action">--</div>
-                        <div class="de-rec-metrics">
-                            <div class="de-rec-metric">
-                                <span class="de-rec-metric-label">Risk reduction</span>
-                                <span class="de-rec-metric-value" id="de-rec-risk-red">--%</span>
-                            </div>
-                            <div class="de-rec-metric">
-                                <span class="de-rec-metric-label">Fuel consumed</span>
-                                <span class="de-rec-metric-value" id="de-rec-fuel">-- / -- m/s</span>
-                            </div>
-                            <div class="de-rec-metric">
-                                <span class="de-rec-metric-label">Threats resolved</span>
-                                <span class="de-rec-metric-value" id="de-rec-resolved">--</span>
-                            </div>
-                        </div>
-                        <div class="de-rec-reason" id="de-rec-reason">--</div>
-                    </div>
-
-                    <!-- Refresh button -->
-                    <button class="de-refresh-btn" id="de-refresh-btn">&#8635; Re-optimize</button>
-                </div>
-
                 <!-- Collision Simulation Player -->
                 <div class="panel-section sim-panel sim-highlight">
                     <h3 class="section-title">

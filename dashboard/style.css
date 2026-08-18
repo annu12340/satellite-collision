@@ -511,6 +511,15 @@ body {
    VIEWPORT
    ============================================================================ */
 
+/* Center Column: wraps viewport + bottom decision engine */
+.center-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .viewport-container {
     flex: 1;
     position: relative;
@@ -2186,4 +2195,233 @@ body {
 .de-refresh-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* Strategy Race Animation */
+.de-race-container {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    display: none; /* hidden until triggered */
+}
+
+.de-race-container.active {
+    display: block;
+    animation: de-race-fadein 0.3s ease;
+}
+
+@keyframes de-race-fadein {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.de-race-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.de-race-lanes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.de-race-lane {
+    display: grid;
+    grid-template-columns: 58px 1fr 28px;
+    align-items: center;
+    gap: 8px;
+    height: 22px;
+}
+
+.de-race-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.de-race-track {
+    position: relative;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 7px;
+    overflow: hidden;
+}
+
+.de-race-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    border-radius: 7px;
+    transition: width 0.05s linear;
+}
+
+/* Strategy-specific bar colors */
+.de-race-lane[data-strategy="none"] .de-race-bar {
+    background: linear-gradient(90deg, rgba(142, 142, 147, 0.4), rgba(142, 142, 147, 0.7));
+    box-shadow: 0 0 6px rgba(142, 142, 147, 0.3);
+}
+
+.de-race-lane[data-strategy="greedy"] .de-race-bar {
+    background: linear-gradient(90deg, rgba(255, 149, 0, 0.5), rgba(255, 149, 0, 0.85));
+    box-shadow: 0 0 6px rgba(255, 149, 0, 0.3);
+}
+
+.de-race-lane[data-strategy="network_flow"] .de-race-bar {
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.5), rgba(0, 212, 255, 0.85));
+    box-shadow: 0 0 6px rgba(0, 212, 255, 0.3);
+}
+
+.de-race-lane[data-strategy="mcts"] .de-race-bar {
+    background: linear-gradient(90deg, rgba(123, 47, 247, 0.5), rgba(123, 47, 247, 0.85));
+    box-shadow: 0 0 6px rgba(123, 47, 247, 0.3);
+}
+
+/* Finished state */
+.de-race-lane.finished .de-race-bar {
+    width: 100% !important;
+}
+
+.de-race-lane.finished .de-race-label {
+    color: var(--text-primary);
+}
+
+.de-race-result {
+    font-size: 0.72rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    text-align: center;
+}
+
+.de-race-lane.finished .de-race-result {
+    opacity: 1;
+}
+
+/* Winner lane styling */
+.de-race-lane.winner {
+    position: relative;
+}
+
+.de-race-lane.winner .de-race-bar {
+    box-shadow: 0 0 12px rgba(255, 204, 0, 0.5), 0 0 24px rgba(255, 204, 0, 0.2);
+}
+
+.de-race-lane.winner .de-race-label {
+    color: #ffcc00;
+    text-shadow: 0 0 8px rgba(255, 204, 0, 0.4);
+}
+
+.de-race-lane.winner .de-race-track {
+    border-color: rgba(255, 204, 0, 0.4);
+    box-shadow: 0 0 8px rgba(255, 204, 0, 0.15);
+}
+
+/* Winner announcement */
+.de-race-winner {
+    margin-top: 8px;
+    padding: 6px 10px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #ffcc00;
+    text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    background: linear-gradient(90deg, transparent, rgba(255, 204, 0, 0.06), transparent);
+    border-radius: var(--radius-sm);
+}
+
+.de-race-winner.visible {
+    opacity: 1;
+    animation: de-winner-glow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes de-winner-glow {
+    from { text-shadow: 0 0 8px rgba(255, 204, 0, 0.4); }
+    to { text-shadow: 0 0 16px rgba(255, 204, 0, 0.8), 0 0 30px rgba(255, 204, 0, 0.3); }
+}
+
+/* ============================================================================
+   BOTTOM MIDDLE SECTION (Decision Engine relocated)
+   ============================================================================ */
+
+.bottom-middle-section {
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    padding: 12px 16px;
+    overflow-y: auto;
+    max-height: 240px;
+}
+
+.decision-engine-bottom {
+    margin: 0 !important;
+    border-radius: var(--radius);
+    padding: 14px 18px;
+}
+
+.decision-engine-bottom .section-title {
+    margin-bottom: 10px;
+}
+
+.de-bottom-layout {
+    display: grid;
+    grid-template-columns: 180px 1fr 1fr auto;
+    gap: 16px;
+    align-items: start;
+}
+
+.de-bottom-layout .de-situation {
+    margin-bottom: 0;
+}
+
+.de-bottom-layout .de-candidates-section {
+    min-width: 0;
+}
+
+.de-bottom-layout .de-recommendation {
+    margin-bottom: 0;
+}
+
+.de-bottom-layout .de-refresh-section {
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+}
+
+.de-bottom-layout .de-refresh-btn {
+    white-space: nowrap;
+}
+
+/* Responsive: stack on narrower viewports */
+@media (max-width: 1200px) {
+    .de-bottom-layout {
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .de-bottom-layout .de-refresh-section {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 900px) {
+    .de-bottom-layout {
+        grid-template-columns: 1fr;
+    }
 }

@@ -3348,6 +3348,8 @@ function handleSimEvent(evt) {
             addEventLogEntry('critical', message);
             // Pulse the danger indicator
             flashDangerIndicator();
+            // Trigger strategy race animation
+            startStrategyRace();
             // Cinematic zoom toward a point between both objects
             if (simPlayer.obj1Mesh && simPlayer.obj2Mesh) {
                 const mid = simPlayer.obj1Mesh.position.clone()
@@ -3809,6 +3811,169 @@ function renderDecisionEngine(data) {
     if (recReasonEl) {
         recReasonEl.textContent = recommended.reason;
     }
+}
+
+
+// ============================================================================
+// STRATEGY RACE ANIMATION
+// ============================================================================
+
+let raceAnimationRunning = false;
+
+/**
+ * startStrategyRace()
+ * Fetches decision engine data and animates 4 strategy lanes racing head-to-head.
+ * Each bar fills proportional to real solve_time_ms (longest = ~2.5s animation).
+ * Winner gets a golden glow crown after all finish.
+ */
+async function startStrategyRace() {
+    if (raceAnimationRunning) return;
+    raceAnimationRunning = true;
+
+    const container = document.getElementById('de-race-container');
+    const winnerEl = document.getElementById('de-race-winner');
+    if (!container) { raceAnimationRunning = false; return; }
+
+    // Reset state
+    container.classList.add('active');
+    winnerEl.classList.remove('visible');
+    winnerEl.textContent = '';
+
+    const lanes = container.querySelectorAll('.de-race-lane');
+    lanes.forEach(lane => {
+        lane.classList.remove('finished', 'winner');
+        const bar = lane.querySelector('.de-race-bar');
+        const result = lane.querySelector('.de-race-result');
+        bar.style.width = '0%';
+        bar.style.transition = 'none';
+        result.textContent = '';
+    });
+
+    // Force reflow so reset takes effect
+    void container.offsetHeight;
+
+    // Fetch fresh decision engine data
+    let data = decisionEngineData;
+    if (!data || !data.candidates) {
+        try {
+            const res = await fetch('/api/decision-engine');
+            if (res.ok) {
+                data = await res.json();
+                decisionEngineData = data;
+            }
+        } catch (e) { /* use cached */ }
+    }
+
+    if (!data || !data.candidates) {
+        raceAnimationRunning = false;
+        return;
+    }
+
+    const { candidates, recommended } = data;
+
+    // Map strategies to their solve times and residual risk
+    const strategyMap = {};
+    candidates.forEach(c => {
+        strategyMap[c.strategy] = {
+            solveTime: c.solve_time_ms || 0,
+            residualRisk: c.residual_risk,
+            label: c.label,
+            id: c.id
+        };
+    });
+
+    // "none" strategy has zero solve time — give it a tiny baseline for the animation
+    if (strategyMap['none'] && strategyMap['none'].solveTime === 0) {
+        strategyMap['none'].solveTime = 5;
+    }
+
+    // Find the max solve time to scale animation (longest bar = 2500ms animation)
+    const maxSolve = Math.max(
+        ...Object.values(strategyMap).map(s => s.solveTime),
+        1 // prevent division by zero
+    );
+    const RACE_DURATION_MS = 2500;
+
+    // Animate each lane
+    const strategies = ['none', 'greedy', 'network_flow', 'mcts'];
+    const finishPromises = [];
+
+    strategies.forEach(strat => {
+        const lane = container.querySelector(`.de-race-lane[data-strategy="${strat}"]`);
+        if (!lane) return;
+
+        const bar = lane.querySelector('.de-race-bar');
+        const result = lane.querySelector('.de-race-result');
+        const info = strategyMap[strat];
+
+        if (!info) {
+            // Strategy not in data — show as N/A quickly
+            finishPromises.push(new Promise(resolve => {
+                setTimeout(() => {
+                    lane.classList.add('finished');
+                    result.textContent = '—';
+                    resolve();
+                }, 200);
+            }));
+            return;
+        }
+
+        // Duration proportional to solve time
+        const duration = (info.solveTime / maxSolve) * RACE_DURATION_MS;
+
+        // Animate the bar fill over duration with easeOutCubic via CSS
+        finishPromises.push(new Promise(resolve => {
+            // Small random stagger (0-100ms) for visual effect
+            const stagger = Math.random() * 100;
+
+            setTimeout(() => {
+                bar.style.transition = `width ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+                bar.style.width = '100%';
+
+                setTimeout(() => {
+                    lane.classList.add('finished');
+                    result.textContent = '\u2713'; // checkmark
+                    resolve();
+                }, duration);
+            }, stagger);
+        }));
+    });
+
+    // Wait for all lanes to finish
+    await Promise.all(finishPromises);
+
+    // Determine winner: lowest residual risk among non-none strategies
+    let winnerStrat = null;
+    let lowestRisk = Infinity;
+    strategies.forEach(strat => {
+        if (strat === 'none') return;
+        const info = strategyMap[strat];
+        if (info && info.residualRisk < lowestRisk) {
+            lowestRisk = info.residualRisk;
+            winnerStrat = strat;
+        }
+    });
+
+    // If recommended exists, prefer that as winner
+    if (recommended && recommended.strategy && recommended.strategy !== 'none') {
+        winnerStrat = recommended.strategy;
+    }
+
+    // Crown the winner
+    if (winnerStrat) {
+        const winnerLane = container.querySelector(`.de-race-lane[data-strategy="${winnerStrat}"]`);
+        if (winnerLane) {
+            winnerLane.classList.add('winner');
+            const winnerResult = winnerLane.querySelector('.de-race-result');
+            winnerResult.textContent = '\uD83C\uDFC6'; // trophy emoji
+        }
+
+        const stratNames = { greedy: 'GREEDY', network_flow: 'NETWORK FLOW', mcts: 'MCTS' };
+        winnerEl.textContent = `\u2728 ${stratNames[winnerStrat] || winnerStrat.toUpperCase()} WINS \u2014 Optimal Strategy Selected`;
+        winnerEl.classList.add('visible');
+    }
+
+    raceAnimationRunning = false;
 }
 
 
