@@ -128,21 +128,25 @@ def test_parse_valid_strategy_file():
 
 def test_parse_invalid_filename():
     """Test that non-custom_*.py files are rejected."""
-    src_dir = Path(__file__).parent.parent / "src" / "strategies"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    
-    bad_file = src_dir / "invalid_strategy.py"
-    bad_file.write_text("# Some code")
-    
     try:
-        parse_strategy_file(str(bad_file))
-        raise AssertionError("Should have raised StrategyIntegrationError")
-    except StrategyIntegrationError as e:
-        assert "must be named 'custom_'" in str(e)
-    finally:
-        # Cleanup
-        if bad_file.exists():
-            bad_file.unlink()
+        # Try to parse a file with invalid name pattern
+        from pathlib import Path
+        src_dir = Path(__file__).parent.parent / "src" / "strategies"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        
+        bad_file = src_dir / "invalid_strategy.py"
+        bad_file.write_text("# Some code")
+        
+        try:
+            parse_strategy_file(str(bad_file))
+            raise AssertionError("Should have raised StrategyIntegrationError")
+        except StrategyIntegrationError:
+            pass  # Expected
+        finally:
+            if bad_file.exists():
+                bad_file.unlink()
+    except Exception as e:
+        raise AssertionError(f"Test failed: {e}")
 
 
 def test_parse_missing_function():

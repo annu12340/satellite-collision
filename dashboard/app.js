@@ -2060,8 +2060,11 @@ function recordTelemetrySample(scenario, frame, dist) {
     if (hint) hint.classList.add('hidden');
 
     const t = frame * 0.05 / Math.max(simPlayer.speed, 0.001);
-    const closingKms = teleState.prevDist !== undefined
-        ? (teleState.prevDist - dist) / 0.05 : 0;
+    // Use scenario's relative velocity (constant for the encounter).
+    // Do NOT recompute from Δdist/Δt, as that gives spurious values from
+    // the synthetic trajectory paths. The relative velocity is a physical
+    // property of the encounter and comes from the scenario metadata.
+    const closingKms = scenario.metadata?.relative_velocity_kms || 0;
     teleState.prevDist = dist;
 
     teleState.history.push({ frame, t, dist, closingVel: closingKms });
@@ -2074,9 +2077,9 @@ function recordTelemetrySample(scenario, frame, dist) {
     const proxEl = document.getElementById('tel-proximity');
 
     if (rangeEl) rangeEl.textContent = dist.toFixed(1) + ' km';
-    if (velEl) velEl.textContent = Math.abs(closingKms).toFixed(2) + ' km/s ' + (closingKms >= 0 ? '\u2193' : '\u2191');
+    if (velEl) velEl.textContent = closingKms.toFixed(2) + ' km/s (closing)';
 
-    // Live-evaluated physics equations: d(t) = |r1(t) - r2(t)|, v_rel = -Δd/Δt
+    // Live-evaluated physics equations: d(t) = |r1(t) - r2(t)|, v_rel from scenario
     const eqDistEl = document.getElementById('physics-eq-dist');
     const eqVelEl = document.getElementById('physics-eq-vel');
     if (eqDistEl) eqDistEl.textContent = `= ${dist.toFixed(2)} km`;
@@ -3091,15 +3094,12 @@ function updateSimHud(scenario, frame, dist) {
 
     if (distEl) distEl.textContent = dist.toFixed(1) + ' km';
 
-    // Closing/relative velocity: derived from the change in distance over one frame
+    // Relative velocity: use scenario metadata (fixed physical property of the encounter)
+    // Do NOT recompute from Δdist/Δt, as the synthetic paths don't correspond to
+    // the real physical time steps of the encounter.
     if (velEl) {
-        const prevDist = simPlayer._prevHudDist;
-        if (prevDist !== undefined) {
-            const closingKms = (prevDist - dist) / 0.05;
-            velEl.textContent = Math.abs(closingKms).toFixed(2) + ' km/s ' + (closingKms >= 0 ? '(closing)' : '(opening)');
-        } else {
-            velEl.textContent = '-- km/s';
-        }
+        const relVel = scenario.metadata?.relative_velocity_kms || 0;
+        velEl.textContent = relVel.toFixed(2) + ' km/s (closing)';
     }
     simPlayer._prevHudDist = dist;
 
