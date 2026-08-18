@@ -92,8 +92,12 @@
                     </h3>
                     <div class="telemetry-readout">
                         <div class="telemetry-stat">
-                            <span class="telemetry-label">Range</span>
+                            <span class="telemetry-label">Current Separation</span>
                             <span class="telemetry-value" id="tel-range">-- km</span>
+                        </div>
+                        <div class="telemetry-stat">
+                            <span class="telemetry-label">Predicted Miss Distance</span>
+                            <span class="telemetry-value" id="tel-miss-distance">-- km</span>
                         </div>
                         <div class="telemetry-stat">
                             <span class="telemetry-label">Closing Vel.</span>
@@ -134,19 +138,19 @@
                     </h3>
                     <canvas id="bplane-chart" width="260" height="220"></canvas>
                     <div class="bplane-readout">
-                        <div class="bplane-stat">
+                        <div class="bplane-stat" title="Predicted relative position at TCA (Time of Closest Approach), projected onto the encounter plane">
                             <span class="bplane-label">Miss (&xi;,&zeta;)</span>
                             <span class="bplane-value" id="bplane-miss">-- , -- km</span>
                         </div>
-                        <div class="bplane-stat">
+                        <div class="bplane-stat" title="99.7% confidence region of estimated position uncertainty (covariance ellipse semi-axes)">
                             <span class="bplane-label">3&sigma; ellipse</span>
                             <span class="bplane-value" id="bplane-ellipse">-- &times; -- km</span>
                         </div>
-                        <div class="bplane-stat">
+                        <div class="bplane-stat" title="Hard Body Radius: combined physical collision radius of both objects">
                             <span class="bplane-label">Combined HBR</span>
                             <span class="bplane-value" id="bplane-hbr">-- m</span>
                         </div>
-                        <div class="bplane-stat">
+                        <div class="bplane-stat" title="Probability of Collision: likelihood the miss vector falls within the HBR disk, given the uncertainty ellipse">
                             <span class="bplane-label">P<sub>c</sub> estimate</span>
                             <span class="bplane-value" id="bplane-pc">--</span>
                         </div>
@@ -241,8 +245,12 @@
                 <!-- Mission Telemetry HUD (shown during simulation playback) -->
                 <div id="sim-hud" class="hidden">
                     <div class="hud-row">
-                        <span class="hud-label">DISTANCE</span>
+                        <span class="hud-label">CURRENT SEPARATION</span>
                         <span class="hud-value" id="hud-distance">-- km</span>
+                    </div>
+                    <div class="hud-row">
+                        <span class="hud-label">PREDICTED MISS DISTANCE</span>
+                        <span class="hud-value" id="hud-miss-distance">-- km</span>
                     </div>
                     <div class="hud-row">
                         <span class="hud-label">CLOSING VEL.</span>
@@ -304,8 +312,74 @@
                 </div>
             </main>
 
-            <!-- Right Panel (Simulation + Risk Timeline ONLY) -->
+            <!-- Right Panel -->
             <aside class="panel panel-right">
+                <!-- 🧠 AUTONOMOUS DECISION ENGINE -->
+                <div class="panel-section decision-engine-panel">
+                    <h3 class="section-title">
+                        <span class="title-icon">&#129504;</span>
+                        Autonomous Decision Engine
+                        <span class="sim-status-badge idle" id="de-status">IDLE</span>
+                    </h3>
+
+                    <!-- Situation Summary -->
+                    <div class="de-situation" id="de-situation">
+                        <div class="de-situation-row">
+                            <span class="de-sit-label">Active threats</span>
+                            <span class="de-sit-value" id="de-threats">--</span>
+                        </div>
+                        <div class="de-situation-row">
+                            <span class="de-sit-label">Strategy</span>
+                            <span class="de-sit-value de-strategy-badge" id="de-method">--</span>
+                        </div>
+                        <div class="de-situation-row">
+                            <span class="de-sit-label">Solve time</span>
+                            <span class="de-sit-value" id="de-solve-time">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Candidate Actions Table -->
+                    <div class="de-candidates-header">Candidate Actions</div>
+                    <div class="de-candidates" id="de-candidates">
+                        <div class="de-candidate-row de-candidate-header-row">
+                            <span class="de-cand-id"></span>
+                            <span class="de-cand-label">Action</span>
+                            <span class="de-cand-risk">Risk</span>
+                            <span class="de-cand-fuel">Fuel</span>
+                        </div>
+                        <div class="de-candidate-row de-placeholder">
+                            <span class="de-cand-msg">Awaiting optimization...</span>
+                        </div>
+                    </div>
+
+                    <!-- Recommendation -->
+                    <div class="de-recommendation" id="de-recommendation">
+                        <div class="de-rec-header">
+                            <span class="de-rec-star">&#9733;</span>
+                            <span>RECOMMENDED</span>
+                        </div>
+                        <div class="de-rec-action" id="de-rec-action">--</div>
+                        <div class="de-rec-metrics">
+                            <div class="de-rec-metric">
+                                <span class="de-rec-metric-label">Risk reduction</span>
+                                <span class="de-rec-metric-value" id="de-rec-risk-red">--%</span>
+                            </div>
+                            <div class="de-rec-metric">
+                                <span class="de-rec-metric-label">Fuel consumed</span>
+                                <span class="de-rec-metric-value" id="de-rec-fuel">-- / -- m/s</span>
+                            </div>
+                            <div class="de-rec-metric">
+                                <span class="de-rec-metric-label">Threats resolved</span>
+                                <span class="de-rec-metric-value" id="de-rec-resolved">--</span>
+                            </div>
+                        </div>
+                        <div class="de-rec-reason" id="de-rec-reason">--</div>
+                    </div>
+
+                    <!-- Refresh button -->
+                    <button class="de-refresh-btn" id="de-refresh-btn">&#8635; Re-optimize</button>
+                </div>
+
                 <!-- Collision Simulation Player -->
                 <div class="panel-section sim-panel sim-highlight">
                     <h3 class="section-title">
@@ -336,7 +410,7 @@
                             <div class="sim-progress-fill" id="sim-progress-fill"></div>
                         </div>
                         <div class="sim-progress-info">
-                            <span>Distance: <strong id="sim-distance">--</strong></span>
+                            <span>Current Separation: <strong id="sim-distance">--</strong></span>
                         </div>
                     </div>
 

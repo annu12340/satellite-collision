@@ -50,6 +50,15 @@ const teleState = {
     prevDist: undefined,
 };
 
+// Live B-plane (encounter plane) inset - tracks the current frame's
+// projected miss vector, covariance ellipse, and hard-body-radius circle
+// as a scenario plays back (see conjunction.py encounter-plane routines
+// and _build_bplane_track in src/api.py for the underlying physics).
+const bplaneState = {
+    scenario: null,
+    active: false,
+};
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -104,6 +113,7 @@ async function init() {
     initFullSimulationControl();
     initOrbits3dPanel();
     drawTelemetryChart();
+    drawBplaneChart();
 
     setInterval(updateClock, 1000);
 
@@ -2120,6 +2130,10 @@ function startSimulation() {
             teleState.scenario = scenario;
             setTelemetryBadge('live', 'LIVE');
 
+            bplaneState.scenario = scenario;
+            bplaneState.active = true;
+            setBplaneBadge('live', 'LIVE');
+
             addEventLogEntry('info', `Scenario: ${scenario.name}`);
             addEventLogEntry('info', `Alt: ${scenario.metadata.altitude_km} km | V_rel: ${scenario.metadata.relative_velocity_kms} km/s`);
 
@@ -2205,6 +2219,9 @@ function playScenarioFrames(scenario) {
         // Update the catastrophic-threshold energy gauge (E_MR vs 40 J/g line)
         updateCatastrophicGauge(frameData.specific_energy_j_per_kg, scenario);
 
+        // Update the live B-plane encounter-geometry inset
+        updateBplaneFrame(scenario, frame);
+
         // Fire events at their scheduled frames
         while (eventIdx < scenario.events.length && scenario.events[eventIdx].frame <= frame) {
             const evt = scenario.events[eventIdx];
@@ -2238,6 +2255,8 @@ function stopSimulation() {
     document.getElementById('sim-stop-btn').disabled = true;
 
     setTelemetryBadge('idle', 'IDLE');
+    bplaneState.active = false;
+    setBplaneBadge('idle', 'IDLE');
 
     // Hide the telemetry HUD
     const hud = document.getElementById('sim-hud');
@@ -2266,7 +2285,7 @@ function resetTelemetryPanel() {
     setTelemetryBadge('idle', 'IDLE');
     const hint = document.getElementById('telemetry-hint');
     if (hint) hint.classList.remove('hidden');
-    ['tel-range', 'tel-vel', 'tel-proximity'].forEach(id => {
+    ['tel-range', 'tel-miss-distance', 'tel-vel', 'tel-proximity'].forEach(id => {
         const el = document.getElementById(id);
         if (el) { el.textContent = '--'; el.className = 'telemetry-value'; }
     });
@@ -2276,6 +2295,191 @@ function resetTelemetryPanel() {
     if (eqVelEl) eqVelEl.textContent = '= -- km/s';
     drawTelemetryChart();
     resetCatastrophicGauge();
+    resetBplanePanel();
+}
+
+// ============================================================================
+// LIVE B-PLANE (ENCOUNTER PLANE) INSET
+// ----------------------------------------------------------------------------
+// Physics: the B-plane is the 2D plane through the secondary object,
+// perpendicular to the relative velocity vector at closest approach. All
+// conjunction-assessment probability-of-collision calculations happen in
+// this plane (see compute_encounter_plane() / probability_of_collision_2d()
+// in src/conjunction.py, and docs/physics.md). This inset renders exactly
+// that geometry, live:
+//   - the hard-body-radius disk (physical collision cross-section)
+//   - the n-sigma covariance confidence ellipse (tracking uncertainty)
+//   - the miss-distance vector (xi, zeta) from tracking data
+// as the avoidance burn executes and both the vector and the ellipse move.
+// ============================================================================
+
+function setBplaneBadge(cls, text) {
+    const badge = document.getElementById('bplane-badge');
+    if (!badge) return;
+    badge.className = 'sim-status-badge ' + cls;
+    badge.textContent = text;
+}
+
+function resetBplanePanel() {
+    bplaneState.scenario = null;
+    bplaneState.active = false;
+    setBplaneBadge('idle', 'IDLE');
+    const missEl = document.getElementById('bplane-miss');
+    const ellipseEl = document.getElementById('bplane-ellipse');
+    const hbrEl = document.getElementById('bplane-hbr');
+    const pcEl = document.getElementById('bplane-pc');
+    if (missEl) missEl.textContent = '-- , -- km';
+    if (ellipseEl) ellipseEl.textContent = '-- \u00d7 -- km';
+    if (hbrEl) hbrEl.textContent = '-- m';
+    if (pcEl) { pcEl.textContent = '--'; pcEl.className = 'bplane-value'; }
+    drawBplaneChart();
+}
+
+function updateBplaneFrame(scenario, frame) {
+    const bp = scenario && scenario.bplane;
+    if (!bp) return;
+
+    const idx = Math.min(frame, bp.miss_xi_km.length - 1);
+    const xi = bp.miss_xi_km[idx];
+    const zeta = bp.miss_zeta_km[idx];
+    const semiMajor = bp.cov_semi_major_km[idx];
+    const semiMinor = bp.cov_semi_minor_km[idx];
+    const pc = bp.pc_estimate[idx];
+    const combinedRadiusM = bp.combined_radius_km * 1000;
+
+    const missEl = document.getElementById('bplane-miss');
+    const ellipseEl = document.getElementById('bplane-ellipse');
+    const hbrEl = document.getElementById('bplane-hbr');
+    const pcEl = document.getElementById('bplane-pc');
+
+    if (missEl) missEl.textContent = `${xi.toFixed(2)}, ${zeta.toFixed(2)} km`;
+    if (ellipseEl) ellipseEl.textContent = `${semiMajor.toFixed(2)} \u00d7 ${semiMinor.toFixed(2)} km`;
+    if (hbrEl) hbrEl.textContent = `${combinedRadiusM.toFixed(1)} m`;
+    if (pcEl) {
+        pcEl.textContent = pc.toExponential(2);
+        pcEl.className = 'bplane-value' + (pc > 1e-4 ? ' critical-text' : '');
+    }
+
+    drawBplaneChart(bp, idx);
+}
+
+/**
+ * Draw the B-plane inset: hard-body-radius circle, covariance confidence
+ * ellipse, and miss-distance vector, auto-scaled to fit whichever is
+ * currently larger (ellipse or miss distance) so the geometry stays
+ * readable as the burn shrinks the miss vector toward (or away from) the
+ * origin.
+ */
+function drawBplaneChart(bp, idx) {
+    const canvas = document.getElementById('bplane-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (!bp) {
+        // Empty state: faint crosshair only
+        ctx.strokeStyle = '#1e2a42';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(cx, 8); ctx.lineTo(cx, h - 8);
+        ctx.moveTo(8, cy); ctx.lineTo(w - 8, cy);
+        ctx.stroke();
+        return;
+    }
+
+    const xi = bp.miss_xi_km[idx];
+    const zeta = bp.miss_zeta_km[idx];
+    const semiMajor = bp.cov_semi_major_km[idx];
+    const combinedRadiusKm = bp.combined_radius_km;
+
+    // Auto-scale: fit the larger of (miss distance + ellipse) or a
+    // reasonable minimum, with margin, into the canvas half-width.
+    const missDist = Math.sqrt(xi * xi + zeta * zeta);
+    const extent = Math.max(missDist + semiMajor, semiMajor * 1.3, combinedRadiusKm * 4, 0.05);
+    const margin = 28; // px reserved for axis labels
+    const plotRadiusPx = Math.min(w, h) / 2 - margin;
+    const scale = plotRadiusPx / extent; // px per km
+
+    const toPx = (xKm, yKm) => [cx + xKm * scale, cy - yKm * scale];
+
+    // Grid: faint concentric range rings + crosshair axes
+    ctx.strokeStyle = '#1e2a42';
+    ctx.lineWidth = 0.5;
+    [0.33, 0.66, 1.0].forEach(f => {
+        ctx.beginPath();
+        ctx.arc(cx, cy, plotRadiusPx * f, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+    ctx.beginPath();
+    ctx.moveTo(cx, margin * 0.3); ctx.lineTo(cx, h - margin * 0.3);
+    ctx.moveTo(margin * 0.3, cy); ctx.lineTo(w - margin * 0.3, cy);
+    ctx.stroke();
+
+    // Axis labels (xi = along-track-ish, zeta = out-of-plane-ish)
+    ctx.fillStyle = '#5a6b8a';
+    ctx.font = '9px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('\u03be (km)', w - margin + 4, cy - 6);
+    ctx.fillText('\u03b6 (km)', cx + 18, margin * 0.3 + 8);
+
+    // 3-sigma covariance confidence ellipse
+    const [ex, ey] = toPx(xi, zeta);
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.rotate(-bp.cov_angle_rad);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, bp.cov_semi_major_km[idx] * scale, bp.cov_semi_minor_km[idx] * scale, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = '#7b2ff7';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(123, 47, 247, 0.08)';
+    ctx.fill();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Miss-distance vector: origin (secondary object) -> miss point
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = '#ffcc00';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Hard-body-radius disk, centered at the miss point (relative
+    // geometry: the secondary object's hard body sits at the origin,
+    // the combined radius disk is drawn around the primary's position)
+    const hbrPx = Math.max(combinedRadiusKm * scale, 2);
+    ctx.beginPath();
+    ctx.arc(ex, ey, hbrPx, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 45, 85, 0.35)';
+    ctx.fill();
+    ctx.strokeStyle = '#ff2d55';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Secondary object marker at the origin (reference body of the B-plane)
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#00d4ff';
+    ctx.fill();
+
+    // Primary object marker at the miss point
+    ctx.beginPath();
+    ctx.arc(ex, ey, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffcc00';
+    ctx.fill();
+
+    // View extent readout (bottom-left) - clarifies the auto-scaled zoom level
+    ctx.fillStyle = '#5a6b8a';
+    ctx.font = '8px JetBrains Mono';
+    ctx.textAlign = 'left';
+    ctx.fillText(`view: \u00b1${extent.toFixed(2)} km`, 6, h - 6);
 }
 
 // ============================================================================
@@ -2370,10 +2574,23 @@ function recordTelemetrySample(scenario, frame, dist) {
 
     // Live readouts
     const rangeEl = document.getElementById('tel-range');
+    const missEl = document.getElementById('tel-miss-distance');
     const velEl = document.getElementById('tel-vel');
     const proxEl = document.getElementById('tel-proximity');
 
+    // Current separation: live instantaneous distance
     if (rangeEl) rangeEl.textContent = dist.toFixed(1) + ' km';
+
+    // Predicted miss distance at TCA: minimum distance from precomputed trajectory
+    if (missEl) {
+        const missDistKm = scenario.min_distance_km;
+        if (missDistKm !== undefined && missDistKm !== null) {
+            missEl.textContent = missDistKm.toFixed(2) + ' km';
+        } else {
+            missEl.textContent = '-- km';
+        }
+    }
+
     if (velEl) velEl.textContent = closingKms.toFixed(2) + ' km/s (closing)';
 
     // Live-evaluated physics equations: d(t) = |r1(t) - r2(t)|, v_rel from scenario
@@ -2390,11 +2607,10 @@ function recordTelemetrySample(scenario, frame, dist) {
     if (proxEl) proxEl.textContent = proxLabel;
     if (proxEl) proxEl.className = 'telemetry-value ' + proxClass;
 
-    // Update telemetry hint to clarify the difference between current range and miss distance
+    // Update telemetry hint
     const hintEl = document.getElementById('telemetry-hint');
-    if (hintEl && teleState.scenario) {
-        const missDistKm = teleState.scenario.min_distance_km?.toFixed(1) || '--';
-        hintEl.textContent = `Predicted miss distance (at TCA): ${missDistKm} km`;
+    if (hintEl) {
+        hintEl.textContent = 'Current Separation = live distance. Predicted Miss Distance = closest approach forecast.';
         hintEl.classList.remove('hidden');
     }
 
@@ -2518,7 +2734,7 @@ function drawTelemetryChart() {
     ctx.textAlign = 'left';
     ctx.fillStyle = '#8b9cc0';
     ctx.font = '9px Inter';
-    ctx.fillText('Range (km)', padding.left, padding.top + 2);
+    ctx.fillText('Separation (km)', padding.left, padding.top + 2);
 }
 
 // ============================================================================
@@ -3394,10 +3610,23 @@ function updateSimHud(scenario, frame, dist) {
     if (!hud || hud.classList.contains('hidden')) return;
 
     const distEl = document.getElementById('hud-distance');
+    const missEl = document.getElementById('hud-miss-distance');
     const velEl = document.getElementById('hud-velocity');
     const tcaEl = document.getElementById('hud-tca');
 
+    // Current separation: live distance between both objects right now
     if (distEl) distEl.textContent = dist.toFixed(1) + ' km';
+
+    // Predicted miss distance at TCA: the minimum separation the trajectory
+    // predicts at closest approach (from scenario precomputation)
+    if (missEl) {
+        const missDistKm = scenario.min_distance_km;
+        if (missDistKm !== undefined && missDistKm !== null) {
+            missEl.textContent = missDistKm.toFixed(2) + ' km';
+        } else {
+            missEl.textContent = '-- km';
+        }
+    }
 
     // Relative velocity: use scenario metadata (fixed physical property of the encounter)
     // Do NOT recompute from Δdist/Δt, as the synthetic paths don't correspond to
