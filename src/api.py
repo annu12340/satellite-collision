@@ -1138,22 +1138,13 @@ def get_decision_engine():
     """
     sim = _CURRENT_SIM.get('sim')
     if sim is None:
-        # Fall back to cached SIM_DATA if available
-        return _build_decision_engine_from_cache()
-
-    # Check if this is a quick request (initial page load) vs explicit re-optimize
-    force_live = request.args.get('live', 'false').lower() == 'true'
-
-    if not force_live:
-        # For initial load, use fast cached path to avoid blocking the UI
-        return _build_decision_engine_from_cache()
+        return jsonify({'error': 'No simulation data available. Start the simulation first.'}), 404
 
     try:
         return _build_decision_engine_from_sim(sim)
     except Exception as e:
-        # If live optimizer fails, fall back gracefully
-        print(f"  Decision engine live solve failed: {e}")
-        return _build_decision_engine_from_cache()
+        print(f"  Decision engine solve failed: {e}")
+        return jsonify({'error': f'Optimizer failed: {str(e)}'}), 500
 
 
 def _build_decision_engine_from_sim(sim):
@@ -1385,145 +1376,6 @@ def _generate_recommendation_reason(rec, candidates, total_risk, total_fuel):
         parts.append("Best risk-per-fuel-unit tradeoff across evaluated strategies.")
 
     return ' '.join(parts)
-
-
-def _build_decision_engine_from_cache():
-    """Build a simplified decision engine response from cached SIM_DATA."""
-    conj_data = SIM_DATA.get('conjunctions', [])
-    sc_data = SIM_DATA.get('spacecraft', [])
-    maneuver_data = SIM_DATA.get('maneuvers', [])
-    risk_metrics = SIM_DATA.get('risk_metrics', {})
-
-    if not conj_data:
-        return jsonify({'error': 'No simulation data available. Run /api/run first.'}), 404
-
-    active_threats = len(conj_data)
-    critical = sum(1 for c in conj_data if c['risk_level'] == 'CRITICAL')
-    high = sum(1 for c in conj_data if c['risk_level'] == 'HIGH')
-    total_risk = sum(c['risk_score'] for c in conj_data)
-    total_pc = sum(c['probability_of_collision'] for c in conj_data)
-
-    maneuverable = [s for s in sc_data if s.get('maneuverable')]
-    total_fuel = sum(s.get('fuel_remaining_ms', 0) for s in maneuverable)
-
-    situation = {
-        'active_threats': active_threats,
-        'critical_threats': critical,
-        'high_threats': high,
-        'total_risk_score': float(total_risk),
-        'total_collision_probability': float(total_pc),
-        'maneuverable_spacecraft': len(maneuverable),
-        'total_fuel_available_ms': float(total_fuel),
-        'avg_fuel_per_spacecraft_ms': float(total_fuel / max(len(maneuverable), 1)),
-    }
-
-    # Build candidates from cached maneuver data
-    total_maneuver_fuel = sum(m.get('fuel_cost_ms', 0) for m in maneuver_data)
-    n_resolved = len(maneuver_data)
-
-    candidates = [
-        {
-            'id': 'A',
-            'label': 'No maneuver (accept risk)',
-            'strategy': 'none',
-            'maneuvers': [],
-            'residual_risk': float(total_risk),
-            'residual_pc': float(total_pc),
-            'fuel_cost_ms': 0.0,
-            'conjunctions_resolved': 0,
-            'secondary_threats_change': 0,
-        },
-        {
-            'id': 'B',
-            'label': f'Greedy: top-risk-first ({n_resolved} burns)',
-            'strategy': 'greedy',
-            'maneuvers': [
-                {
-                    'spacecraft_id': m['spacecraft_id'],
-                    'spacecraft_name': m['spacecraft_id'],
-                    'delta_v_ms': m['fuel_cost_ms'],
-                    'target_conjunction': m.get('target_conjunction', ''),
-                }
-                for m in maneuver_data[:5]
-            ],
-            'residual_risk': float(total_risk * 0.3),
-            'residual_pc': float(total_pc * 0.3),
-            'fuel_cost_ms': float(total_maneuver_fuel),
-            'conjunctions_resolved': n_resolved,
-            'secondary_threats_change': -n_resolved,
-            'solve_time_ms': 120.0,
-        },
-        {
-            'id': 'C',
-            'label': f'Network flow MILP ({n_resolved} burns)',
-            'strategy': 'network_flow',
-            'maneuvers': [
-                {
-                    'spacecraft_id': m['spacecraft_id'],
-                    'spacecraft_name': m['spacecraft_id'],
-                    'delta_v_ms': m['fuel_cost_ms'] * 0.85,
-                    'target_conjunction': m.get('target_conjunction', ''),
-                }
-                for m in maneuver_data[:5]
-            ],
-            'residual_risk': float(total_risk * 0.25),
-            'residual_pc': float(total_pc * 0.25),
-            'fuel_cost_ms': float(total_maneuver_fuel * 0.85),
-            'conjunctions_resolved': n_resolved,
-            'secondary_threats_change': -(n_resolved + 1),
-            'solve_time_ms': 450.0,
-        },
-        {
-            'id': 'D',
-            'label': f'MCTS lookahead ({max(n_resolved, 1)} burns)',
-            'strategy': 'mcts',
-            'maneuvers': [
-                {
-                    'spacecraft_id': m['spacecraft_id'],
-                    'spacecraft_name': m['spacecraft_id'],
-                    'delta_v_ms': m['fuel_cost_ms'] * 0.9,
-                    'target_conjunction': m.get('target_conjunction', ''),
-                }
-                for m in maneuver_data[:5]
-            ],
-            'residual_risk': float(total_risk * 0.22),
-            'residual_pc': float(total_pc * 0.22),
-            'fuel_cost_ms': float(total_maneuver_fuel * 0.9),
-            'conjunctions_resolved': n_resolved,
-            'secondary_threats_change': -(n_resolved + 2),
-            'solve_time_ms': 2800.0,
-        },
-    ]
-
-    # Recommend network flow (best tradeoff typically)
-    rec_idx = 2
-    rec = candidates[rec_idx]
-    risk_reduction_pct = ((total_risk - rec['residual_risk']) / max(total_risk, 1e-12)) * 100
-
-    recommended = {
-        'candidate_id': rec['id'],
-        'candidate_index': rec_idx,
-        'strategy': rec['strategy'],
-        'risk_reduction_pct': float(min(risk_reduction_pct, 99.9)),
-        'fuel_consumed_ms': float(rec['fuel_cost_ms']),
-        'fuel_budget_total_ms': float(total_fuel),
-        'conjunctions_resolved': rec['conjunctions_resolved'],
-        'secondary_threats_change': rec['secondary_threats_change'],
-        'reason': 'Network flow MILP selected. Fuel-optimal assignment resolving all critical conjunctions with 15% less fuel than greedy.',
-    }
-
-    return jsonify({
-        'situation': situation,
-        'candidates': candidates,
-        'recommended': recommended,
-        'optimizer_metadata': {
-            'strategies_evaluated': ['none', 'greedy', 'network_flow', 'mcts'],
-            'planning_horizon_days': 7,
-            'cascade_depth': 3,
-            'mcts_simulations': 50,
-            'total_solve_time_ms': 3370.0,
-        },
-    })
 
 
 @app.route('/api/scenario/<scenario_id>')

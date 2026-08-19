@@ -91,24 +91,6 @@
                         Live Telemetry
                         <span class="sim-status-badge idle" id="telemetry-badge">IDLE</span>
                     </h3>
-                    <div class="telemetry-readout">
-                        <div class="telemetry-stat">
-                            <span class="telemetry-label">Current Separation</span>
-                            <span class="telemetry-value" id="tel-range">-- km</span>
-                        </div>
-                        <div class="telemetry-stat">
-                            <span class="telemetry-label">Predicted Miss Distance</span>
-                            <span class="telemetry-value" id="tel-miss-distance">-- km</span>
-                        </div>
-                        <div class="telemetry-stat">
-                            <span class="telemetry-label">Closing Vel.</span>
-                            <span class="telemetry-value" id="tel-vel">-- km/s</span>
-                        </div>
-                        <div class="telemetry-stat">
-                            <span class="telemetry-label">Proximity</span>
-                            <span class="telemetry-value" id="tel-proximity">--</span>
-                        </div>
-                    </div>
                     <canvas id="telemetry-chart" width="260" height="92"></canvas>
 
                     <!-- Physics equation, evaluated live with the current frame's numbers -->
@@ -249,23 +231,27 @@
                 <div id="three-viewport"></div>
                 <div id="plotly-viewport" class="hidden"></div>
 
-                <!-- Mission Telemetry HUD (shown during simulation playback) -->
-                <div id="sim-hud" class="hidden">
+                <!-- Hero Telemetry HUD (always visible, primary readout tied to 3D view) -->
+                <div id="sim-hud">
                     <div class="hud-row">
-                        <span class="hud-label">CURRENT SEPARATION</span>
+                        <span class="hud-label">SEPARATION</span>
                         <span class="hud-value" id="hud-distance">-- km</span>
                     </div>
                     <div class="hud-row">
-                        <span class="hud-label">PREDICTED MISS DISTANCE</span>
+                        <span class="hud-label">MISS DIST.</span>
                         <span class="hud-value" id="hud-miss-distance">-- km</span>
                     </div>
                     <div class="hud-row">
-                        <span class="hud-label">CLOSING VEL.</span>
+                        <span class="hud-label">V_REL</span>
                         <span class="hud-value" id="hud-velocity">-- km/s</span>
                     </div>
                     <div class="hud-row">
                         <span class="hud-label">TIME TO TCA</span>
                         <span class="hud-value" id="hud-tca">--</span>
+                    </div>
+                    <div class="hud-row">
+                        <span class="hud-label">PROXIMITY</span>
+                        <span class="hud-value" id="hud-proximity">--</span>
                     </div>
                 </div>
 
@@ -319,126 +305,86 @@
                 </div>
             </main>
 
-                <!-- 🧠 AUTONOMOUS DECISION ENGINE (Bottom Middle) -->
-                <div class="bottom-middle-section">
-                    <div class="decision-engine-panel decision-engine-bottom">
-                        <h3 class="section-title">
-                            <span class="title-icon">&#129504;</span>
-                            Autonomous Decision Engine
-                            <span class="sim-status-badge idle" id="de-status">IDLE</span>
-                        </h3>
+                <!-- Bottom spacer (decision engine moved to right panel) -->
+            <div class="bottom-middle-section" style="display:none;"></div>
+            </div>
 
-                        <div class="de-bottom-layout">
-                            <!-- Situation Summary -->
-                            <div class="de-situation" id="de-situation">
-                                <div class="de-situation-row">
-                                    <span class="de-sit-label">Active threats</span>
-                                    <span class="de-sit-value" id="de-threats">--</span>
-                                </div>
-                                <div class="de-situation-row">
-                                    <span class="de-sit-label">Strategy</span>
-                                    <span class="de-sit-value de-strategy-badge" id="de-method">--</span>
-                                </div>
-                                <div class="de-situation-row">
-                                    <span class="de-sit-label">Solve time</span>
-                                    <span class="de-sit-value" id="de-solve-time">--</span>
-                                </div>
-                            </div>
+            <!-- Right Panel: Tabbed Interface -->
+            <aside class="panel panel-right panel-right-hero">
+                <!-- Tab Bar -->
+                <div class="rp-tab-bar">
+                    <button class="rp-tab active" data-tab="decision" id="rp-tab-decision">
+                        <span class="rp-tab-icon">&#129504;</span> Decision
+                    </button>
+                    <button class="rp-tab" data-tab="simulation" id="rp-tab-simulation">
+                        <span class="rp-tab-icon">&#127916;</span> Simulation
+                    </button>
+                    <button class="rp-tab" data-tab="events" id="rp-tab-events">
+                        <span class="rp-tab-icon">&#128225;</span> Events
+                    </button>
+                </div>
 
-                            <!-- Strategy Race Animation -->
-                            <div class="de-race-container" id="de-race-container">
-                                <div class="de-race-header">Strategy Race</div>
-                                <div class="de-race-lanes">
-                                    <div class="de-race-lane" data-strategy="none">
-                                        <span class="de-race-label">None</span>
-                                        <div class="de-race-track">
-                                            <div class="de-race-bar"></div>
-                                        </div>
-                                        <span class="de-race-result"></span>
-                                    </div>
-                                    <div class="de-race-lane" data-strategy="greedy">
-                                        <span class="de-race-label">Greedy</span>
-                                        <div class="de-race-track">
-                                            <div class="de-race-bar"></div>
-                                        </div>
-                                        <span class="de-race-result"></span>
-                                    </div>
-                                    <div class="de-race-lane" data-strategy="network_flow">
-                                        <span class="de-race-label">Net Flow</span>
-                                        <div class="de-race-track">
-                                            <div class="de-race-bar"></div>
-                                        </div>
-                                        <span class="de-race-result"></span>
-                                    </div>
-                                    <div class="de-race-lane" data-strategy="mcts">
-                                        <span class="de-race-label">MCTS</span>
-                                        <div class="de-race-track">
-                                            <div class="de-race-bar"></div>
-                                        </div>
-                                        <span class="de-race-result"></span>
-                                    </div>
-                                </div>
-                                <div class="de-race-winner" id="de-race-winner"></div>
-                            </div>
+                <!-- Tab Content: Decision Engine -->
+                <div class="rp-tab-content active" id="rp-content-decision">
+                <div class="panel-section de-hero-section">
+                    <h3 class="de-hero-title">
+                        <span class="de-hero-icon">&#129504;</span>
+                        AUTONOMOUS DECISION ENGINE
+                        <span class="sim-status-badge idle" id="de-status">IDLE</span>
+                    </h3>
 
-                            <!-- Candidate Actions Table -->
-                            <div class="de-candidates-section">
-                                <div class="de-candidates-header">Candidate Actions</div>
-                                <div class="de-candidates" id="de-candidates">
-                                    <div class="de-candidate-row de-candidate-header-row">
-                                        <span class="de-cand-id"></span>
-                                        <span class="de-cand-label">Action</span>
-                                        <span class="de-cand-risk">Risk</span>
-                                        <span class="de-cand-fuel">Fuel</span>
-                                    </div>
-                                    <div class="de-candidate-row de-placeholder">
-                                        <span class="de-cand-msg">Awaiting optimization...</span>
-                                    </div>
-                                </div>
-                            </div>
+                    <!-- Threat Summary -->
+                    <div class="de-threat-summary" id="de-threat-summary">
+                        <div class="de-threat-count">
+                            <span class="de-threat-number" id="de-threat-total">--</span>
+                            <span class="de-threat-label">ACTIVE THREATS</span>
+                        </div>
+                        <div class="de-threat-breakdown-row">
+                            <span class="de-threat-badge critical" id="de-threat-crit">0 CRITICAL</span>
+                            <span class="de-threat-badge high" id="de-threat-high">0 HIGH</span>
+                        </div>
+                    </div>
 
-                            <!-- Recommendation -->
-                            <div class="de-recommendation" id="de-recommendation">
-                                <div class="de-rec-header">
-                                    <span class="de-rec-star">&#9733;</span>
-                                    <span>RECOMMENDED</span>
+                    <!-- Strategy & Candidates (merged compact panel) -->
+                    <div class="de-strategy-compact" id="de-strategy-compact">
+                        <!-- Winner badge: single row showing winning strategy + solve time -->
+                        <div class="de-winner-badge" id="de-winner-badge">
+                            <span class="de-winner-icon">&#9889;</span>
+                            <span class="de-winner-strategy" id="de-winner-strategy">--</span>
+                            <span class="de-winner-meta" id="de-winner-meta"></span>
+                        </div>
+                        <!-- Expandable candidates toggle -->
+                        <button class="de-expand-toggle" id="de-expand-toggle">
+                            <span id="de-expand-label">View all candidates</span>
+                            <span class="de-expand-arrow" id="de-expand-arrow">&#9660;</span>
+                        </button>
+                        <!-- Collapsible candidate table -->
+                        <div class="de-candidates-collapsible collapsed" id="de-candidates-collapsible">
+                            <div class="de-candidates" id="de-candidates">
+                                <div class="de-candidate-row de-candidate-header-row">
+                                    <span class="de-cand-id"></span>
+                                    <span class="de-cand-label">Action</span>
+                                    <span class="de-cand-risk">Residual Risk</span>
+                                    <span class="de-cand-fuel">&Delta;v</span>
+                                    <span class="de-cand-threats">Threats</span>
                                 </div>
-                                <div class="de-rec-action" id="de-rec-action">--</div>
-                                <div class="de-rec-metrics">
-                                    <div class="de-rec-metric">
-                                        <span class="de-rec-metric-label">Risk reduction</span>
-                                        <span class="de-rec-metric-value" id="de-rec-risk-red">--%</span>
-                                    </div>
-                                    <div class="de-rec-metric">
-                                        <span class="de-rec-metric-label">Fuel consumed</span>
-                                        <span class="de-rec-metric-value" id="de-rec-fuel">-- / -- m/s</span>
-                                    </div>
-                                    <div class="de-rec-metric">
-                                        <span class="de-rec-metric-label">Threats resolved</span>
-                                        <span class="de-rec-metric-value" id="de-rec-resolved">--</span>
-                                    </div>
+                                <div class="de-candidate-row de-placeholder">
+                                    <span class="de-cand-msg">Awaiting optimization...</span>
                                 </div>
-                                <div class="de-rec-reason" id="de-rec-reason">--</div>
-                            </div>
-
-                            <!-- Refresh button -->
-                            <div class="de-refresh-section">
-                                <button class="de-refresh-btn" id="de-refresh-btn">&#8635; Re-optimize</button>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Right Panel -->
-            <aside class="panel panel-right">
-                <!-- Collision Simulation Player -->
-                <div class="panel-section sim-panel sim-highlight">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#127916;</span>
-                        Collision Simulation
-                        <span class="sim-status-badge idle" id="sim-status">IDLE</span>
-                    </h3>
+
+
+                    <!-- Re-optimize button -->
+                    <button class="de-refresh-btn" id="de-refresh-btn">&#8635; Re-optimize</button>
+                </div>
+                </div>
+
+                <!-- Tab Content: Simulation -->
+                <div class="rp-tab-content" id="rp-content-simulation">
+                <div class="panel-section sim-panel">
                     <div class="sim-scenario-name" id="sim-scenario-name">Select a scenario</div>
 
                     <div class="sim-controls">
@@ -461,12 +407,18 @@
                         <div class="sim-progress-track">
                             <div class="sim-progress-fill" id="sim-progress-fill"></div>
                         </div>
-                        <div class="sim-progress-info">
-                            <span>Current Separation: <strong id="sim-distance">--</strong></span>
-                        </div>
                     </div>
 
-                    <!-- SSE Event Log -->
+                    <div class="sim-status-row">
+                        <span class="sim-status-label">Status</span>
+                        <span class="sim-status-badge idle" id="sim-status">IDLE</span>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Tab Content: Events -->
+                <div class="rp-tab-content" id="rp-content-events">
+                <div class="panel-section sim-panel">
                     <div class="sim-event-log-container">
                         <div class="sim-event-log-header">
                             <span>&#128225; Live Events (SSE)</span>
@@ -480,55 +432,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Full Simulation Run (regenerates all dynamic charts) -->
-                <div class="panel-section hidden">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128260;</span>
-                        Run Full Simulation
-                        <span class="sim-status-badge idle" id="fullsim-status">IDLE</span>
-                    </h3>
-                    <p class="fullsim-hint">Re-runs the constellation, conjunction, and risk-projection pipeline with a new random seed, then refreshes every chart below.</p>
-                    <button id="fullsim-run-btn" class="sim-btn sim-btn-play fullsim-btn">&#9851; RUN SIMULATION</button>
-                </div>
-
-                <!-- Risk Timeline -->
-                <div class="panel-section hidden">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128200;</span>
-                        Risk Timeline (24h)
-                    </h3>
-                    <canvas id="risk-chart" width="280" height="140"></canvas>
-                </div>
-
-                <!-- Risk Evolution (multi-year projection) -->
-                <div class="panel-section hidden">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128202;</span>
-                        Risk Evolution (10yr)
-                    </h3>
-                    <div class="chart-tabs">
-                        <button class="chart-tab active" data-evo="pc">Pc</button>
-                        <button class="chart-tab" data-evo="debris">Debris</button>
-                        <button class="chart-tab" data-evo="kessler">Kessler</button>
-                        <button class="chart-tab" data-evo="fuel">Fuel</button>
-                    </div>
-                    <canvas id="risk-evolution-chart" width="280" height="140"></canvas>
-                </div>
-
-                <!-- Debris Analysis (highest-risk conjunction breakup) -->
-                <div class="panel-section hidden">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128165;</span>
-                        Debris Analysis
-                    </h3>
-                    <div class="debris-summary" id="debris-summary">Awaiting simulation data...</div>
-                    <div class="chart-tabs">
-                        <button class="chart-tab active" data-debris="size">Size</button>
-                        <button class="chart-tab" data-debris="altitude">Altitude</button>
-                        <button class="chart-tab" data-debris="lifetime">Lifetime</button>
-                    </div>
-                    <canvas id="debris-analysis-chart" width="280" height="140"></canvas>
                 </div>
             </aside>
         </div>

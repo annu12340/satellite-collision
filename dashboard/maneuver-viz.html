@@ -72,12 +72,6 @@
             background: rgba(48, 209, 88, 0.15);
             color: var(--risk-low);
             border: 1px solid rgba(48, 209, 88, 0.3);
-            animation: pulse-badge 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse-badge {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
         }
 
         /* Main Layout */
@@ -350,6 +344,168 @@
                 display: none;
             }
         }
+
+        /* Fuel Budget Panel */
+        .fuel-panel {
+            position: absolute;
+            top: 160px;
+            right: 16px;
+            background: rgba(15, 21, 32, 0.92);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            backdrop-filter: blur(8px);
+            min-width: 200px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+        .fuel-panel.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .fuel-panel-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .fuel-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px 0;
+        }
+
+        .fuel-label {
+            font-size: 0.62rem;
+            color: var(--text-secondary);
+        }
+
+        .fuel-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .fuel-value.cost { color: var(--risk-medium); }
+        .fuel-value.remaining { color: var(--accent-cyan); }
+
+        .fuel-bar-container {
+            margin-top: 8px;
+            background: rgba(90, 107, 138, 0.2);
+            border-radius: 3px;
+            height: 6px;
+            overflow: hidden;
+        }
+
+        .fuel-bar {
+            height: 100%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+            transition: width 0.8s ease;
+        }
+
+        .fuel-coverage {
+            margin-top: 6px;
+            font-size: 0.6rem;
+            color: var(--text-secondary);
+        }
+
+        .fuel-coverage span {
+            color: var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        /* Rationale Panel */
+        .rationale-panel {
+            position: absolute;
+            bottom: 70px;
+            left: 50%;
+            transform: translateX(-50%) translateY(12px);
+            background: rgba(15, 21, 32, 0.94);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 14px 20px;
+            backdrop-filter: blur(8px);
+            max-width: 420px;
+            width: 90%;
+            opacity: 0;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            pointer-events: none;
+        }
+
+        .rationale-panel.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+        }
+
+        .rationale-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .rationale-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 10px 0;
+        }
+
+        .rationale-list li {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            padding: 3px 0;
+            padding-left: 14px;
+            position: relative;
+        }
+
+        .rationale-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 9px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            opacity: 0.7;
+        }
+
+        .confidence-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .confidence-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .confidence-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
     </style>
 </head>
 <body>
@@ -446,6 +602,35 @@
                 <div class="phase-label before" id="phase-label">AWAITING SCENARIO</div>
                 <div class="phase-sublabel" id="phase-sublabel">Select a scenario to begin</div>
             </div>
+
+            <div class="fuel-panel" id="fuel-panel">
+                <div class="fuel-panel-title">Fuel Budget</div>
+                <div class="fuel-row">
+                    <span class="fuel-label">Before</span>
+                    <span class="fuel-value" id="fuel-before">--</span>
+                </div>
+                <div class="fuel-row">
+                    <span class="fuel-label">This burn</span>
+                    <span class="fuel-value cost" id="fuel-cost">--</span>
+                </div>
+                <div class="fuel-row">
+                    <span class="fuel-label">Remaining</span>
+                    <span class="fuel-value remaining" id="fuel-remaining">--</span>
+                </div>
+                <div class="fuel-bar-container">
+                    <div class="fuel-bar" id="fuel-bar" style="width: 0%"></div>
+                </div>
+                <div class="fuel-coverage">Future threat coverage: <span id="fuel-threats">--</span></div>
+            </div>
+
+            <div class="rationale-panel" id="rationale-panel">
+                <div class="rationale-title">Why this maneuver?</div>
+                <ol class="rationale-list" id="rationale-list"></ol>
+                <div class="confidence-row">
+                    <span class="confidence-label">Confidence</span>
+                    <span class="confidence-value" id="confidence-value">--</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -490,6 +675,15 @@
             initialSep: 12.4,
             finalSep: 847.2,
             maneuverDesc: 'Prograde burn +0.42 m/s at T-45min',
+            fuelBefore: 12.0,
+            futureThreats: 3,
+            confidence: 87,
+            rationale: [
+                'Resolves highest-risk conjunction (Pc 2.3e-3)',
+                'Uses 0.42 m/s instead of alternate 1.8 m/s',
+                'Creates no new conjunctions',
+                'Preserves capacity for 3 future threats',
+            ],
         },
         multi: {
             name: 'Multi-Conjunction',
@@ -503,6 +697,15 @@
             initialSep: 5.8,
             finalSep: 423.6,
             maneuverDesc: 'Cross-track burn +1.15 m/s resolves 3 conjunctions',
+            fuelBefore: 8.4,
+            futureThreats: 2,
+            confidence: 92,
+            rationale: [
+                'Single burn resolves 3 conjunctions simultaneously',
+                'Saves 2.6 m/s vs. addressing each individually',
+                'No new conjunctions introduced',
+                'Preserves capacity for 2 future threats',
+            ],
         },
         debris: {
             name: 'Debris Cloud Navigation',
@@ -514,6 +717,15 @@
             initialSep: 3.2,
             finalSep: 612.0,
             maneuverDesc: 'Anti-normal burn +0.88 m/s clears debris field',
+            fuelBefore: 14.2,
+            futureThreats: 4,
+            confidence: 79,
+            rationale: [
+                'Clears entire 40-fragment debris cloud in one pass',
+                'Anti-normal direction avoids secondary debris band',
+                'Uses 0.88 m/s vs. 2.3 m/s for in-plane avoidance',
+                'Preserves capacity for 4 future threats',
+            ],
         },
     };
 
@@ -606,20 +818,6 @@
             ctx.textAlign = 'center';
             ctx.fillText(label, x, y - size - 12);
         }
-
-        // Risk emoji indicator
-        let emoji;
-        switch (riskLevel) {
-            case 'safe': emoji = '\ud83d\udfe2'; break;
-            case 'elevated': emoji = '\ud83d\udfe1'; break;
-            case 'critical': emoji = '\ud83d\udd34'; break;
-            case 'debris': emoji = '\ud83d\udfe3'; break;
-        }
-        if (emoji) {
-            ctx.font = '14px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(emoji, x, y + size + 18);
-        }
     }
 
     // Draw a dashed orbit path
@@ -710,17 +908,6 @@
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.lineDashOffset = 0;
-
-        // Midpoint warning icon
-        const mx = (x1 + x2) / 2;
-        const my = (y1 + y2) / 2;
-        const pulseScale = 1 + Math.sin(t * 4) * 0.2;
-
-        ctx.fillStyle = color;
-        ctx.font = `${16 * pulseScale}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('\ud83d\udd34', mx, my);
     }
 
     // Draw burn exhaust effect
@@ -827,6 +1014,10 @@
         animTime = 0;
         phase = 'idle';
 
+        // Hide panels from previous run
+        hideFuelPanel();
+        hideRationalePanel();
+
         // Update button states
         document.querySelectorAll('.scenario-btn').forEach(btn => btn.classList.remove('active'));
         document.getElementById(`btn-scenario-${id}`).classList.add('active');
@@ -858,12 +1049,14 @@
             setPhase('maneuver', 3);
             anim.burnActive = true;
             updateStats('maneuver');
+            showFuelPanel(scenario);
         }, 4000);
         setTimeout(() => {
             anim.burnActive = false;
             setPhase('after', 999);
             addLog('Maneuver complete - verifying separation', 'success');
             updateStats('after');
+            showRationalePanel(scenario);
         }, 7000);
         setTimeout(() => {
             addLog(`Final Pc = ${scenario.finalPc.toExponential(1)} - conjunction resolved`, 'success');
@@ -956,6 +1149,47 @@
             statusEl.textContent = 'SAFE';
             statusEl.className = 'status-value safe';
         }
+    }
+
+    // ========================================================================
+    // FUEL & RATIONALE PANELS
+    // ========================================================================
+
+    function showFuelPanel(scenario) {
+        const panel = document.getElementById('fuel-panel');
+        const remaining = scenario.fuelBefore - scenario.deltaV;
+        const pct = (remaining / scenario.fuelBefore) * 100;
+
+        document.getElementById('fuel-before').textContent = scenario.fuelBefore.toFixed(1) + ' m/s';
+        document.getElementById('fuel-cost').textContent = '-' + scenario.deltaV.toFixed(2) + ' m/s';
+        document.getElementById('fuel-remaining').textContent = remaining.toFixed(2) + ' m/s';
+        document.getElementById('fuel-bar').style.width = pct.toFixed(0) + '%';
+        document.getElementById('fuel-threats').textContent = '+' + scenario.futureThreats + ' threats covered';
+
+        panel.classList.add('visible');
+    }
+
+    function hideFuelPanel() {
+        document.getElementById('fuel-panel').classList.remove('visible');
+    }
+
+    function showRationalePanel(scenario) {
+        const panel = document.getElementById('rationale-panel');
+        const list = document.getElementById('rationale-list');
+        list.innerHTML = '';
+
+        scenario.rationale.forEach(item => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            list.appendChild(li);
+        });
+
+        document.getElementById('confidence-value').textContent = scenario.confidence + '%';
+        panel.classList.add('visible');
+    }
+
+    function hideRationalePanel() {
+        document.getElementById('rationale-panel').classList.remove('visible');
     }
 
     // ========================================================================
@@ -1145,8 +1379,8 @@
         // Starfield
         drawStarfield(animTime);
 
-        // Grid (subtle)
-        ctx.strokeStyle = 'rgba(30, 42, 66, 0.3)';
+        // Grid (very subtle)
+        ctx.strokeStyle = 'rgba(30, 42, 66, 0.12)';
         ctx.lineWidth = 0.5;
         for (let x = 0; x < w; x += 60) {
             ctx.beginPath();

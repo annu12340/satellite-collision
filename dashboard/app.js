@@ -2107,6 +2107,9 @@ function startSimulation() {
     document.getElementById('sim-event-log').innerHTML = '';
     document.getElementById('sim-progress-fill').style.width = '0%';
 
+    // Auto-switch to Events tab so the live feed is visible
+    switchRightPanelTab('events');
+
     // Reset the left-sidebar live telemetry chart for the new run
     resetTelemetryPanel();
 
@@ -2144,10 +2147,6 @@ function startSimulation() {
 
             // Draw the full precomputed trajectories immediately
             drawPathPreview(scenario);
-
-            // Show the telemetry HUD
-            const hud = document.getElementById('sim-hud');
-            if (hud) hud.classList.remove('hidden');
 
             // Move camera to wide view
             const camPos = new THREE.Vector3(2.5, 1.5, 3.5);
@@ -2259,10 +2258,6 @@ function stopSimulation() {
     bplaneState.active = false;
     setBplaneBadge('idle', 'IDLE');
 
-    // Hide the telemetry HUD
-    const hud = document.getElementById('sim-hud');
-    if (hud) hud.classList.add('hidden');
-
     clearSimObjects();
 }
 
@@ -2286,14 +2281,15 @@ function resetTelemetryPanel() {
     setTelemetryBadge('idle', 'IDLE');
     const hint = document.getElementById('telemetry-hint');
     if (hint) hint.classList.remove('hidden');
-    ['tel-range', 'tel-miss-distance', 'tel-vel', 'tel-proximity'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) { el.textContent = '--'; el.className = 'telemetry-value'; }
-    });
     const eqDistEl = document.getElementById('physics-eq-dist');
     const eqVelEl = document.getElementById('physics-eq-vel');
     if (eqDistEl) eqDistEl.textContent = '= -- km';
     if (eqVelEl) eqVelEl.textContent = '= -- km/s';
+    // Reset HUD hero readout
+    ['hud-distance', 'hud-miss-distance', 'hud-velocity', 'hud-tca', 'hud-proximity'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = '--'; el.className = 'hud-value'; }
+    });
     drawTelemetryChart();
     resetCatastrophicGauge();
     resetBplanePanel();
@@ -2573,47 +2569,20 @@ function recordTelemetrySample(scenario, frame, dist) {
     // Cap history so the chart stays responsive on long runs
     if (teleState.history.length > scenario.n_frames + 5) teleState.history.shift();
 
-    // Live readouts
-    const rangeEl = document.getElementById('tel-range');
-    const missEl = document.getElementById('tel-miss-distance');
-    const velEl = document.getElementById('tel-vel');
-    const proxEl = document.getElementById('tel-proximity');
-
-    // Current separation: live instantaneous distance
-    if (rangeEl) rangeEl.textContent = dist.toFixed(1) + ' km';
-
-    // Predicted miss distance at TCA: minimum distance from precomputed trajectory
-    if (missEl) {
-        const missDistKm = scenario.min_distance_km;
-        if (missDistKm !== undefined && missDistKm !== null) {
-            missEl.textContent = missDistKm.toFixed(2) + ' km';
-        } else {
-            missEl.textContent = '-- km';
-        }
-    }
-
-    if (velEl) velEl.textContent = closingKms.toFixed(2) + ' km/s (closing)';
-
     // Live-evaluated physics equations: d(t) = |r1(t) - r2(t)|, v_rel from scenario
     const eqDistEl = document.getElementById('physics-eq-dist');
     const eqVelEl = document.getElementById('physics-eq-vel');
     if (eqDistEl) eqDistEl.textContent = `= ${dist.toFixed(2)} km`;
     if (eqVelEl) eqVelEl.textContent = `= ${closingKms.toFixed(2)} km/s`;
 
+    // Proximity state for HUD
+    const proxEl = document.getElementById('hud-proximity');
     let proxLabel, proxClass;
-    if (dist > 500) { proxLabel = 'SAFE'; proxClass = 'success'; }
-    else if (dist > 100) { proxLabel = 'GUARDED'; proxClass = ''; }
-    else if (dist > 10) { proxLabel = 'ELEVATED'; proxClass = 'warning'; }
-    else { proxLabel = 'CRITICAL'; proxClass = 'warning critical-text'; }
-    if (proxEl) proxEl.textContent = proxLabel;
-    if (proxEl) proxEl.className = 'telemetry-value ' + proxClass;
-
-    // Update telemetry hint
-    const hintEl = document.getElementById('telemetry-hint');
-    if (hintEl) {
-        hintEl.textContent = 'Current Separation = live distance. Predicted Miss Distance = closest approach forecast.';
-        hintEl.classList.remove('hidden');
-    }
+    if (dist > 500) { proxLabel = 'SAFE'; proxClass = 'hud-value hud-success'; }
+    else if (dist > 100) { proxLabel = 'GUARDED'; proxClass = 'hud-value'; }
+    else if (dist > 10) { proxLabel = 'ELEVATED'; proxClass = 'hud-value hud-warning'; }
+    else { proxLabel = 'CRITICAL'; proxClass = 'hud-value hud-critical'; }
+    if (proxEl) { proxEl.textContent = proxLabel; proxEl.className = proxClass; }
 
     drawTelemetryChart();
 }
@@ -3609,13 +3578,11 @@ function zoomToTcaPoint() {
 }
 
 function updateSimHud(scenario, frame, dist) {
-    const hud = document.getElementById('sim-hud');
-    if (!hud || hud.classList.contains('hidden')) return;
-
     const distEl = document.getElementById('hud-distance');
     const missEl = document.getElementById('hud-miss-distance');
     const velEl = document.getElementById('hud-velocity');
     const tcaEl = document.getElementById('hud-tca');
+    const proxEl = document.getElementById('hud-proximity');
 
     // Current separation: live distance between both objects right now
     if (distEl) distEl.textContent = dist.toFixed(1) + ' km';
@@ -3632,11 +3599,9 @@ function updateSimHud(scenario, frame, dist) {
     }
 
     // Relative velocity: use scenario metadata (fixed physical property of the encounter)
-    // Do NOT recompute from Δdist/Δt, as the synthetic paths don't correspond to
-    // the real physical time steps of the encounter.
     if (velEl) {
         const relVel = scenario.metadata?.relative_velocity_kms || 0;
-        velEl.textContent = relVel.toFixed(2) + ' km/s (closing)';
+        velEl.textContent = relVel.toFixed(2) + ' km/s';
     }
     simPlayer._prevHudDist = dist;
 
@@ -3649,6 +3614,17 @@ function updateSimHud(scenario, frame, dist) {
             const secondsRemaining = framesRemaining * 0.05 / simPlayer.speed;
             tcaEl.textContent = secondsRemaining.toFixed(1) + ' s';
         }
+    }
+
+    // Proximity level (color-coded via CSS classes)
+    if (proxEl) {
+        let proxLabel, proxClass;
+        if (dist > 500) { proxLabel = 'SAFE'; proxClass = 'hud-value hud-success'; }
+        else if (dist > 100) { proxLabel = 'GUARDED'; proxClass = 'hud-value'; }
+        else if (dist > 10) { proxLabel = 'ELEVATED'; proxClass = 'hud-value hud-warning'; }
+        else { proxLabel = 'CRITICAL'; proxClass = 'hud-value hud-critical'; }
+        proxEl.textContent = proxLabel;
+        proxEl.className = proxClass;
     }
 }
 
@@ -3671,8 +3647,51 @@ function initDecisionEngine() {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', fetchDecisionEngine);
     }
+
+    // Wire up the expand/collapse toggle for candidate actions
+    const expandToggle = document.getElementById('de-expand-toggle');
+    if (expandToggle) {
+        expandToggle.addEventListener('click', () => {
+            const collapsible = document.getElementById('de-candidates-collapsible');
+            const arrow = document.getElementById('de-expand-arrow');
+            const label = document.getElementById('de-expand-label');
+            if (collapsible) {
+                const isCollapsed = collapsible.classList.toggle('collapsed');
+                if (arrow) arrow.classList.toggle('expanded', !isCollapsed);
+                if (label) label.textContent = isCollapsed ? 'View all candidates' : 'Hide candidates';
+            }
+        });
+    }
+
+    // Right panel tab switching
+    initRightPanelTabs();
+
     // Initial fetch
     fetchDecisionEngine();
+}
+
+function initRightPanelTabs() {
+    const tabs = document.querySelectorAll('.rp-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.dataset.tab;
+
+            // Deactivate all tabs + contents
+            document.querySelectorAll('.rp-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.rp-tab-content').forEach(c => c.classList.remove('active'));
+
+            // Activate clicked tab + its content
+            tab.classList.add('active');
+            const content = document.getElementById('rp-content-' + targetTab);
+            if (content) content.classList.add('active');
+        });
+    });
+}
+
+/** Switch to a specific right-panel tab programmatically */
+function switchRightPanelTab(tabName) {
+    const tab = document.querySelector(`.rp-tab[data-tab="${tabName}"]`);
+    if (tab) tab.click();
 }
 
 async function fetchDecisionEngine() {
@@ -3687,7 +3706,19 @@ async function fetchDecisionEngine() {
 
     try {
         const res = await fetch('/api/decision-engine');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            if (res.status === 404) {
+                // No simulation running yet — show waiting state
+                renderDecisionEngineEmpty('Waiting for simulation...');
+                if (statusEl) {
+                    statusEl.textContent = 'WAITING';
+                    statusEl.className = 'sim-status-badge idle';
+                }
+                return;
+            }
+            throw new Error(errData.error || `HTTP ${res.status}`);
+        }
         decisionEngineData = await res.json();
         renderDecisionEngine(decisionEngineData);
 
@@ -3697,6 +3728,7 @@ async function fetchDecisionEngine() {
         }
     } catch (err) {
         console.warn('Decision engine fetch failed:', err);
+        renderDecisionEngineEmpty('Optimizer unavailable');
         if (statusEl) {
             statusEl.textContent = 'ERROR';
             statusEl.className = 'sim-status-badge error';
@@ -3706,64 +3738,127 @@ async function fetchDecisionEngine() {
     }
 }
 
+function renderDecisionEngineEmpty(message) {
+    const threatTotalEl = document.getElementById('de-threat-total');
+    const threatCritEl = document.getElementById('de-threat-crit');
+    const threatHighEl = document.getElementById('de-threat-high');
+    const container = document.getElementById('de-candidates');
+    const recActionEl = document.getElementById('de-rec-action');
+    const recRiskEl = document.getElementById('de-rec-risk-red');
+    const recFuelEl = document.getElementById('de-rec-fuel');
+    const recResolvedEl = document.getElementById('de-rec-resolved');
+    const recReasonEl = document.getElementById('de-rec-reason');
+    const winnerStratEl = document.getElementById('de-winner-strategy');
+    const winnerMetaEl = document.getElementById('de-winner-meta');
+
+    if (threatTotalEl) threatTotalEl.textContent = '--';
+    if (threatCritEl) threatCritEl.textContent = '-- CRITICAL';
+    if (threatHighEl) threatHighEl.textContent = '-- HIGH';
+    if (winnerStratEl) winnerStratEl.textContent = '--';
+    if (winnerMetaEl) winnerMetaEl.textContent = '';
+    if (container) {
+        container.innerHTML = `
+            <div class="de-candidate-row de-candidate-header-row">
+                <span class="de-cand-id"></span>
+                <span class="de-cand-label">Action</span>
+                <span class="de-cand-risk">Residual Risk</span>
+                <span class="de-cand-fuel">\u0394v</span>
+                <span class="de-cand-threats">Threats</span>
+            </div>
+            <div class="de-candidate-row de-placeholder">
+                <span class="de-cand-msg">${message}</span>
+            </div>
+        `;
+    }
+    if (recActionEl) recActionEl.textContent = '--';
+    if (recRiskEl) recRiskEl.textContent = '--';
+    if (recFuelEl) recFuelEl.textContent = '--';
+    if (recResolvedEl) recResolvedEl.textContent = '--';
+    if (recReasonEl) recReasonEl.textContent = message;
+}
+
 function renderDecisionEngine(data) {
     if (!data || data.error) return;
 
     const { situation, candidates, recommended, optimizer_metadata } = data;
 
-    // Situation summary
-    const threatsEl = document.getElementById('de-threats');
-    const methodEl = document.getElementById('de-method');
-    const solveTimeEl = document.getElementById('de-solve-time');
+    // Threat summary (hero panel)
+    const threatTotalEl = document.getElementById('de-threat-total');
+    const threatCritEl = document.getElementById('de-threat-crit');
+    const threatHighEl = document.getElementById('de-threat-high');
 
-    if (threatsEl) {
-        const critical = situation.critical_threats;
-        const high = situation.high_threats;
-        const total = situation.active_threats;
-        threatsEl.innerHTML = `<strong>${total}</strong> <span class="de-threat-breakdown">(${critical} crit, ${high} high)</span>`;
+    if (threatTotalEl) {
+        threatTotalEl.textContent = situation.active_threats;
     }
-    if (methodEl) {
-        methodEl.textContent = recommended.strategy.replace('_', ' ').toUpperCase();
-        methodEl.className = 'de-sit-value de-strategy-badge de-strat-' + recommended.strategy;
+    if (threatCritEl) {
+        threatCritEl.textContent = `${situation.critical_threats} CRITICAL`;
     }
-    if (solveTimeEl) {
+    if (threatHighEl) {
+        threatHighEl.textContent = `${situation.high_threats} HIGH`;
+    }
+
+    // Winner badge (compact strategy summary)
+    const winnerStratEl = document.getElementById('de-winner-strategy');
+    const winnerMetaEl = document.getElementById('de-winner-meta');
+
+    if (winnerStratEl) {
+        const stratName = recommended.strategy.replace('_', ' ').toUpperCase();
+        winnerStratEl.textContent = stratName + ' \u2014 optimal';
+    }
+    if (winnerMetaEl) {
         const ms = optimizer_metadata.total_solve_time_ms;
-        solveTimeEl.textContent = ms > 1000 ? (ms / 1000).toFixed(1) + 's' : ms.toFixed(0) + 'ms';
+        winnerMetaEl.textContent = ms > 1000 ? (ms / 1000).toFixed(1) + 's' : ms.toFixed(0) + 'ms';
     }
 
-    // Candidates table
+    // Candidates table - with full differentiation
     const container = document.getElementById('de-candidates');
     if (container) {
         let html = `
             <div class="de-candidate-row de-candidate-header-row">
                 <span class="de-cand-id"></span>
                 <span class="de-cand-label">Action</span>
-                <span class="de-cand-risk">Risk</span>
+                <span class="de-cand-risk">Residual Risk</span>
                 <span class="de-cand-fuel">\u0394v</span>
+                <span class="de-cand-threats">Threats</span>
             </div>
         `;
 
         candidates.forEach((cand) => {
             const isRec = cand.id === recommended.candidate_id;
-            const riskDisplay = cand.residual_risk > 0
-                ? cand.residual_risk.toFixed(1)
-                : '0';
-            const fuelDisplay = cand.fuel_cost_ms > 0
-                ? cand.fuel_cost_ms.toFixed(1)
-                : '--';
 
-            // Shorten the label for display
-            let shortLabel = cand.label;
-            if (shortLabel.length > 30) {
-                shortLabel = shortLabel.substring(0, 28) + '\u2026';
-            }
+            // Show residual risk with meaningful precision
+            const riskDisplay = cand.residual_risk > 0
+                ? cand.residual_risk < 0.01
+                    ? cand.residual_risk.toExponential(1)
+                    : cand.residual_risk.toFixed(3)
+                : '0';
+
+            // Show delta-v
+            const fuelDisplay = cand.fuel_cost_ms > 0
+                ? cand.fuel_cost_ms.toFixed(1) + ' m/s'
+                : '\u2014';
+
+            // Show threats resolved
+            const threatsDisplay = cand.conjunctions_resolved > 0
+                ? '\u2212' + cand.conjunctions_resolved
+                : '0';
+
+            // Short label
+            let shortLabel = cand.strategy === 'none' ? 'No maneuver'
+                : cand.strategy === 'greedy' ? 'Greedy'
+                : cand.strategy === 'network_flow' ? 'Network Flow'
+                : cand.strategy === 'mcts' ? 'MCTS'
+                : cand.label;
+
+            const starPrefix = isRec ? '\u2605 ' : '';
 
             html += `
                 <div class="de-candidate-row ${isRec ? 'de-recommended-row' : ''} ${cand.strategy === 'none' ? 'de-baseline-row' : ''}">
-                    <span class="de-cand-id">${cand.id}</span>
+                    <span class="de-cand-id">${starPrefix}${cand.id}</span>
                     <span class="de-cand-label" title="${cand.label}">${shortLabel}</span>
                     <span class="de-cand-risk">${riskDisplay}</span>
                     <span class="de-cand-fuel">${fuelDisplay}</span>
+                    <span class="de-cand-threats">${threatsDisplay}</span>
                 </div>
             `;
         });
@@ -3785,31 +3880,23 @@ function renderDecisionEngine(data) {
             const primary = rec.maneuvers[0];
             const name = primary.spacecraft_name || primary.spacecraft_id;
             const shortName = name.length > 14 ? name.substring(0, 12) + '\u2026' : name;
-            let actionText = `${shortName} \u2192 ${primary.delta_v_ms.toFixed(1)} m/s`;
-            if (rec.maneuvers.length > 1) {
-                actionText += ` (+${rec.maneuvers.length - 1} more)`;
-            }
-            recActionEl.textContent = actionText;
+            recActionEl.innerHTML = `${shortName}<br><span style="font-size:0.7rem;color:var(--accent-cyan)">\u0394v = ${primary.delta_v_ms.toFixed(1)} m/s</span>`;
         } else {
             recActionEl.textContent = 'No action required';
         }
     }
 
     if (recRiskEl) {
-        recRiskEl.textContent = recommended.risk_reduction_pct.toFixed(0) + '%';
-        recRiskEl.className = 'de-rec-metric-value' +
-            (recommended.risk_reduction_pct > 50 ? ' de-good' : '');
+        recRiskEl.textContent = '\u2193 ' + recommended.risk_reduction_pct.toFixed(0) + '%';
     }
     if (recFuelEl) {
-        recFuelEl.textContent = `${recommended.fuel_consumed_ms.toFixed(1)} / ${recommended.fuel_budget_total_ms.toFixed(0)} m/s`;
+        recFuelEl.textContent = `${recommended.fuel_consumed_ms.toFixed(1)} m/s`;
     }
     if (recResolvedEl) {
-        const change = recommended.secondary_threats_change;
-        const changeStr = change < 0 ? ` (${change} secondary)` : '';
-        recResolvedEl.textContent = `${recommended.conjunctions_resolved}${changeStr}`;
+        recResolvedEl.textContent = `\u2212${recommended.conjunctions_resolved}`;
     }
     if (recReasonEl) {
-        recReasonEl.textContent = recommended.reason;
+        recReasonEl.textContent = `Resolves ${recommended.conjunctions_resolved} conjunction(s). Creates 0 secondary threats.`;
     }
 }
 
@@ -3822,35 +3909,14 @@ let raceAnimationRunning = false;
 
 /**
  * startStrategyRace()
- * Fetches decision engine data and animates 4 strategy lanes racing head-to-head.
- * Each bar fills proportional to real solve_time_ms (longest = ~2.5s animation).
- * Winner gets a golden glow crown after all finish.
+ * Updates the winner badge with a brief animation when a risk_assessment
+ * event fires during scenario playback.
  */
 async function startStrategyRace() {
     if (raceAnimationRunning) return;
     raceAnimationRunning = true;
 
-    const container = document.getElementById('de-race-container');
-    const winnerEl = document.getElementById('de-race-winner');
-    if (!container) { raceAnimationRunning = false; return; }
-
-    // Reset state
-    container.classList.add('active');
-    winnerEl.classList.remove('visible');
-    winnerEl.textContent = '';
-
-    const lanes = container.querySelectorAll('.de-race-lane');
-    lanes.forEach(lane => {
-        lane.classList.remove('finished', 'winner');
-        const bar = lane.querySelector('.de-race-bar');
-        const result = lane.querySelector('.de-race-result');
-        bar.style.width = '0%';
-        bar.style.transition = 'none';
-        result.textContent = '';
-    });
-
-    // Force reflow so reset takes effect
-    void container.offsetHeight;
+    const winnerBadge = document.getElementById('de-winner-badge');
 
     // Fetch fresh decision engine data
     let data = decisionEngineData;
@@ -3864,114 +3930,30 @@ async function startStrategyRace() {
         } catch (e) { /* use cached */ }
     }
 
-    if (!data || !data.candidates) {
+    if (!data || !data.candidates || !data.recommended) {
         raceAnimationRunning = false;
         return;
     }
 
-    const { candidates, recommended } = data;
+    const { recommended, optimizer_metadata } = data;
+    const stratName = recommended.strategy.replace('_', ' ').toUpperCase();
+    const ms = optimizer_metadata.total_solve_time_ms;
+    const timeStr = ms > 1000 ? (ms / 1000).toFixed(1) + 's' : ms.toFixed(0) + 'ms';
 
-    // Map strategies to their solve times and residual risk
-    const strategyMap = {};
-    candidates.forEach(c => {
-        strategyMap[c.strategy] = {
-            solveTime: c.solve_time_ms || 0,
-            residualRisk: c.residual_risk,
-            label: c.label,
-            id: c.id
-        };
-    });
+    // Animate the badge with a brief flash
+    const winnerStratEl = document.getElementById('de-winner-strategy');
+    const winnerMetaEl = document.getElementById('de-winner-meta');
 
-    // "none" strategy has zero solve time — give it a tiny baseline for the animation
-    if (strategyMap['none'] && strategyMap['none'].solveTime === 0) {
-        strategyMap['none'].solveTime = 5;
+    if (winnerStratEl) winnerStratEl.textContent = stratName + ' \u2014 optimal';
+    if (winnerMetaEl) winnerMetaEl.textContent = timeStr;
+
+    if (winnerBadge) {
+        winnerBadge.classList.add('de-winner-flash');
+        setTimeout(() => winnerBadge.classList.remove('de-winner-flash'), 800);
     }
 
-    // Find the max solve time to scale animation (longest bar = 2500ms animation)
-    const maxSolve = Math.max(
-        ...Object.values(strategyMap).map(s => s.solveTime),
-        1 // prevent division by zero
-    );
-    const RACE_DURATION_MS = 2500;
-
-    // Animate each lane
-    const strategies = ['none', 'greedy', 'network_flow', 'mcts'];
-    const finishPromises = [];
-
-    strategies.forEach(strat => {
-        const lane = container.querySelector(`.de-race-lane[data-strategy="${strat}"]`);
-        if (!lane) return;
-
-        const bar = lane.querySelector('.de-race-bar');
-        const result = lane.querySelector('.de-race-result');
-        const info = strategyMap[strat];
-
-        if (!info) {
-            // Strategy not in data — show as N/A quickly
-            finishPromises.push(new Promise(resolve => {
-                setTimeout(() => {
-                    lane.classList.add('finished');
-                    result.textContent = '—';
-                    resolve();
-                }, 200);
-            }));
-            return;
-        }
-
-        // Duration proportional to solve time
-        const duration = (info.solveTime / maxSolve) * RACE_DURATION_MS;
-
-        // Animate the bar fill over duration with easeOutCubic via CSS
-        finishPromises.push(new Promise(resolve => {
-            // Small random stagger (0-100ms) for visual effect
-            const stagger = Math.random() * 100;
-
-            setTimeout(() => {
-                bar.style.transition = `width ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-                bar.style.width = '100%';
-
-                setTimeout(() => {
-                    lane.classList.add('finished');
-                    result.textContent = '\u2713'; // checkmark
-                    resolve();
-                }, duration);
-            }, stagger);
-        }));
-    });
-
-    // Wait for all lanes to finish
-    await Promise.all(finishPromises);
-
-    // Determine winner: lowest residual risk among non-none strategies
-    let winnerStrat = null;
-    let lowestRisk = Infinity;
-    strategies.forEach(strat => {
-        if (strat === 'none') return;
-        const info = strategyMap[strat];
-        if (info && info.residualRisk < lowestRisk) {
-            lowestRisk = info.residualRisk;
-            winnerStrat = strat;
-        }
-    });
-
-    // If recommended exists, prefer that as winner
-    if (recommended && recommended.strategy && recommended.strategy !== 'none') {
-        winnerStrat = recommended.strategy;
-    }
-
-    // Crown the winner
-    if (winnerStrat) {
-        const winnerLane = container.querySelector(`.de-race-lane[data-strategy="${winnerStrat}"]`);
-        if (winnerLane) {
-            winnerLane.classList.add('winner');
-            const winnerResult = winnerLane.querySelector('.de-race-result');
-            winnerResult.textContent = '\uD83C\uDFC6'; // trophy emoji
-        }
-
-        const stratNames = { greedy: 'GREEDY', network_flow: 'NETWORK FLOW', mcts: 'MCTS' };
-        winnerEl.textContent = `\u2728 ${stratNames[winnerStrat] || winnerStrat.toUpperCase()} WINS \u2014 Optimal Strategy Selected`;
-        winnerEl.classList.add('visible');
-    }
+    // Also re-render the full decision engine panel with latest data
+    renderDecisionEngine(data);
 
     raceAnimationRunning = false;
 }
