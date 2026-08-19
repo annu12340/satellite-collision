@@ -259,6 +259,63 @@ body {
 
 .header-right {
     text-align: right;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+/* Maneuver Viz navigation button */
+.nav-btn-maneuver {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: var(--accent-cyan);
+    text-decoration: none;
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(6, 255, 208, 0.25);
+    background: linear-gradient(135deg, rgba(6, 255, 208, 0.06), rgba(0, 212, 255, 0.04));
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.nav-btn-maneuver::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(6, 255, 208, 0.12), rgba(0, 212, 255, 0.08));
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.nav-btn-maneuver:hover {
+    border-color: rgba(6, 255, 208, 0.5);
+    box-shadow: 0 0 12px rgba(6, 255, 208, 0.15), inset 0 0 12px rgba(6, 255, 208, 0.05);
+    transform: translateY(-1px);
+}
+
+.nav-btn-maneuver:hover::before {
+    opacity: 1;
+}
+
+.nav-btn-maneuver:active {
+    transform: translateY(0);
+    box-shadow: 0 0 8px rgba(6, 255, 208, 0.1);
+}
+
+.nav-btn-maneuver svg {
+    position: relative;
+    z-index: 1;
+}
+
+.nav-btn-maneuver span {
+    position: relative;
+    z-index: 1;
 }
 
 .time-display {
@@ -2245,12 +2302,6 @@ body {
     letter-spacing: 0.5px;
 }
 
-/* Events tab: let the log fill all space */
-#rp-content-events .sim-event-log {
-    max-height: none;
-    flex: 1;
-}
-
 .de-hero-section {
     padding: 18px 16px;
     border-bottom: none;
@@ -2386,47 +2437,6 @@ body {
     margin-left: auto;
 }
 
-.de-expand-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 6px 0;
-    margin-top: 4px;
-    border: none;
-    border-top: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-secondary);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.58rem;
-    letter-spacing: 0.5px;
-    cursor: pointer;
-    transition: color 0.15s ease;
-}
-
-.de-expand-toggle:hover {
-    color: var(--accent-blue);
-}
-
-.de-expand-arrow {
-    font-size: 0.55rem;
-    transition: transform 0.2s ease;
-}
-
-.de-expand-arrow.expanded {
-    transform: rotate(180deg);
-}
-
-.de-candidates-collapsible {
-    overflow: hidden;
-    transition: max-height 0.3s ease;
-    max-height: 500px;
-}
-
-.de-candidates-collapsible.collapsed {
-    max-height: 0;
-}
-
 .de-winner-flash {
     animation: de-badge-flash 0.8s ease;
 }
@@ -2540,6 +2550,85 @@ body {
     text-align: center;
     color: var(--risk-low);
     font-weight: 700;
+}
+
+/* Candidate block: row + expandable detail section */
+.de-candidate-block {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    margin-bottom: 6px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.de-candidate-block:hover {
+    border-color: var(--border-glow);
+}
+
+.de-candidate-block .de-candidate-row {
+    border: none;
+    margin: 0;
+}
+
+.de-recommended-block {
+    border-color: rgba(48, 209, 88, 0.35) !important;
+    background: rgba(48, 209, 88, 0.04);
+    box-shadow: 0 0 12px rgba(48, 209, 88, 0.08);
+}
+
+.de-baseline-block {
+    opacity: 0.6;
+}
+
+.de-candidate-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 10px 8px 30px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    background: rgba(0,0,0,0.15);
+}
+
+.de-detail-desc {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-bottom: 2px;
+}
+
+.de-detail-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+}
+
+.de-detail-label {
+    color: var(--text-muted);
+    font-size: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.de-detail-value {
+    color: var(--accent-cyan);
+    font-weight: 600;
+}
+
+.de-detail-maneuvers {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 2px;
+}
+
+.de-detail-maneuver {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.52rem;
+    color: var(--text-secondary);
+    padding-left: 4px;
 }
 
 .de-hero-section .de-placeholder {

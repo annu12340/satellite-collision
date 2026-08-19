@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Traffic Control - The Science (But Fun)</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #0f1520;
+            --bg-tertiary: #151c2c;
+            --bg-card: #1a2235;
+            --bg-card-hover: #1f2940;
+            --border-color: #1e2a42;
+            --border-glow: #2a3f66;
+            --text-primary: #e8edf5;
+            --text-secondary: #8b9cc0;
+            --text-muted: #5a6b8a;
+            --accent-blue: #00d4ff;
+            --accent-purple: #7b2ff7;
+            --accent-cyan: #06ffd0;
+            --accent-pink: #ff3d8b;
+            --risk-critical: #ff2d55;
+            --risk-high: #ff9500;
+            --risk-medium: #ffcc00;
+            --risk-low: #30d158;
+            --gradient-primary: linear-gradient(135deg, #00d4ff, #7b2ff7);
+            --radius: 12px;
+            --radius-sm: 6px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        /* Starfield background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+                radial-gradient(1px 1px at 40% 70%, rgba(255,255,255,0.3) 0%, transparent 100%),
+                radial-gradient(1px 1px at 60% 20%, rgba(255,255,255,0.2) 0%, transparent 100%),
+                radial-gradient(1.5px 1.5px at 80% 50%, rgba(255,255,255,0.4) 0%, transparent 100%),
+                radial-gradient(1px 1px at 10% 80%, rgba(255,255,255,0.3) 0%, transparent 100%),
+                radial-gradient(1px 1px at 70% 90%, rgba(255,255,255,0.2) 0%, transparent 100%),
+                radial-gradient(1px 1px at 30% 50%, rgba(255,255,255,0.15) 0%, transparent 100%),
+                radial-gradient(1px 1px at 90% 10%, rgba(255,255,255,0.3) 0%, transparent 100%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .page-wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+
+        /* Header */
+        .page-header {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 40px 20px;
+            position: relative;
+        }
+
+        .page-header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 10%;
+            right: 10%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+        }
+
+        .header-emoji {
+            font-size: 4rem;
+            margin-bottom: 16px;
+            display: block;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .page-header h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .page-header .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Navigation back */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--accent-cyan);
+            text-decoration: none;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            padding: 8px 16px;
+            border: 1px solid rgba(6, 255, 208, 0.25);
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+            margin-bottom: 30px;
+        }
+
+        .back-link:hover {
+            background: rgba(6, 255, 208, 0.08);
+            border-color: rgba(6, 255, 208, 0.5);
+            box-shadow: 0 0 12px rgba(6, 255, 208, 0.15);
+        }
+
+        /* Section cards */
+        .science-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 32px;
+            margin-bottom: 28px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .science-card:hover {
+            border-color: var(--border-glow);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 212, 255, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .science-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: var(--radius) var(--radius) 0 0;
+        }
+
+        .science-card.orbit-card::before { background: var(--gradient-primary); }
+        .science-card.collision-card::before { background: linear-gradient(90deg, var(--risk-high), var(--risk-critical)); }
+        .science-card.dodge-card::before { background: linear-gradient(90deg, var(--accent-cyan), var(--risk-low)); }
+        .science-card.damage-card::before { background: linear-gradient(90deg, var(--risk-critical), var(--accent-pink)); }
+        .science-card.brain-card::before { background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); }
+        .science-card.kessler-card::before { background: linear-gradient(90deg, var(--risk-medium), var(--risk-critical)); }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .card-emoji {
+            font-size: 2rem;
+            flex-shrink: 0;
+        }
+
+        .card-header h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.3px;
+        }
+
+        .card-header .step-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent-blue);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            letter-spacing: 1px;
+            white-space: nowrap;
+        }
+
+        .card-body p {
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            font-size: 0.95rem;
+        }
+
+        .card-body p:last-child {
+            margin-bottom: 0;
+        }
+
+        .card-body strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* Fun callout boxes */
+        .fun-fact {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent-cyan);
+            border-radius: var(--radius-sm);
+            padding: 14px 18px;
+            margin: 16px 0;
+            font-size: 0.88rem;
+        }
+
+        .fun-fact .fact-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .fun-fact p {
+            color: var(--text-secondary);
+            margin-bottom: 0;
+        }
+
+        .analogy-box {
+            background: rgba(123, 47, 247, 0.06);
+            border: 1px solid rgba(123, 47, 247, 0.2);
+            border-radius: var(--radius-sm);
+            padding: 14px 18px;
+            margin: 16px 0;
+        }
+
+        .analogy-box .analogy-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--accent-purple);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .analogy-box p {
+            color: var(--text-secondary);
+            margin-bottom: 0;
+            font-size: 0.9rem;
+        }
+
+        /* Code/equation display */
+        .equation-block {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 16px 20px;
+            margin: 16px 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-blue);
+            text-align: center;
+            letter-spacing: 0.5px;
+            overflow-x: auto;
+        }
+
+        /* Number list */
+        .numbered-list {
+            list-style: none;
+            counter-reset: steps;
+            padding: 0;
+            margin: 16px 0;
+        }
+
+        .numbered-list li {
+            counter-increment: steps;
+            padding: 10px 14px 10px 48px;
+            position: relative;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        .numbered-list li::before {
+            content: counter(steps);
+            position: absolute;
+            left: 14px;
+            top: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+
+        /* Comparison table */
+        .comparison-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 16px 0;
+            font-size: 0.85rem;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .comparison-table th {
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table td {
+            padding: 10px 16px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .comparison-table tr:hover td {
+            background: var(--bg-card);
+        }
+
+        .comparison-table td:first-child {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Risk level badges inline */
+        .risk-badge {
+            display: inline-block;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 3px;
+            letter-spacing: 0.5px;
+        }
+
+        .risk-badge.critical {
+            background: rgba(255, 45, 85, 0.15);
+            color: var(--risk-critical);
+            border: 1px solid rgba(255, 45, 85, 0.3);
+        }
+
+        .risk-badge.warning {
+            background: rgba(255, 149, 0, 0.15);
+            color: var(--risk-high);
+            border: 1px solid rgba(255, 149, 0, 0.3);
+        }
+
+        .risk-badge.safe {
+            background: rgba(48, 209, 88, 0.15);
+            color: var(--risk-low);
+            border: 1px solid rgba(48, 209, 88, 0.3);
+        }
+
+        /* TLDR summary */
+        .tldr-section {
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.05), rgba(123, 47, 247, 0.05));
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: var(--radius);
+            padding: 32px;
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .tldr-section h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+        }
+
+        .tldr-section p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Footer */
+        .page-footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0.5px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .page-wrapper {
+                padding: 20px 16px 60px;
+            }
+
+            .page-header h1 {
+                font-size: 1.6rem;
+            }
+
+            .science-card {
+                padding: 24px 20px;
+            }
+
+            .card-header {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <a href="index.html" class="back-link">&larr; Back to Dashboard</a>
+
+        <header class="page-header">
+            <span class="header-emoji">&#x1F6F0;&#xFE0F;</span>
+            <h1>Space Traffic Control</h1>
+            <p class="subtitle">Orbital mechanics explained like you're at a party and someone asked "so what do you actually do?"</p>
+        </header>
+
+        <!-- Section 1: What's an Orbit -->
+        <section class="science-card orbit-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x1F30D;</span>
+                <h2>Orbits: Falling With Style</h2>
+                <span class="step-badge">STEP 1</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    A satellite isn't floating. It's not held up by anything. It's literally <strong>falling toward Earth</strong> every single second. But here's the trick: it's also moving sideways so fast that by the time it falls, the ground has curved away underneath it.
+                </p>
+                <p>
+                    It's basically the world's most dramatic trust fall, except the Earth keeps dodging.
+                </p>
+
+                <div class="analogy-box">
+                    <span class="analogy-label">&#x1F3AF; Real-World Analogy</span>
+                    <p>Imagine throwing a ball so hard that by the time it should hit the ground, the Earth has curved away. Throw it at 28,000 km/h and congratulations &mdash; you just made an orbit. Also you have a very strong arm.</p>
+                </div>
+
+                <div class="equation-block">
+                    acceleration = -&#956; / r&sup2; &nbsp;&nbsp;(always pointing at Earth's center)
+                </div>
+
+                <p>
+                    That &#956; = 398,600 km&sup3;/s&sup2; is Earth's "gravitational pull strength." The bigger this number, the more Earth yanks on stuff. Jupiter's is 126 million. Jupiter doesn't mess around.
+                </p>
+
+                <div class="fun-fact">
+                    <span class="fact-label">&#x1F913; Nerd Moment</span>
+                    <p>A satellite in Low Earth Orbit completes a full lap around Earth every ~90 minutes. That's 16 sunrises per day. Astronauts on the ISS see a sunrise every hour and a half. Their circadian rhythm is basically vibes at this point.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Why Orbits Get Messy -->
+        <section class="science-card orbit-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x1F32A;&#xFE0F;</span>
+                <h2>Why Reality Ruins Perfect Circles</h2>
+                <span class="step-badge">STEP 2</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    In a physics textbook, orbits are clean ellipses. In reality, three things conspire to make everything messier:
+                </p>
+
+                <ol class="numbered-list">
+                    <li><strong>Earth is chunky at the equator (J2)</strong> &mdash; Earth isn't a perfect sphere, it's a bit squished. That extra belly fat pulls on satellites unevenly, making orbital planes wobble like a drunk hula hoop.</li>
+                    <li><strong>Air drag (yes, in space)</strong> &mdash; At 400 km altitude there are still a few sad, lonely air molecules. At 28,000 km/h, even those few molecules create drag. It's like driving through the world's thinnest car wash &mdash; barely noticeable, but over months it slows you down until you fall out of orbit.</li>
+                    <li><strong>Sunlight physically pushes things</strong> &mdash; Photons have momentum. They literally push on satellites. Tiny force, but it adds up. The Sun is that coworker who pokes you gently but won't stop.</li>
+                </ol>
+
+                <div class="fun-fact">
+                    <span class="fact-label">&#x1F4A1; Why This Matters</span>
+                    <p>Because of these perturbations, we can't just calculate where a satellite will be next week with a simple formula. We have to simulate every tiny force, step by step, second by second. It's like predicting weather, but for individual metal boxes traveling at bullet-speed &times; 30.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Uncertainty -->
+        <section class="science-card collision-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x1F52E;</span>
+                <h2>The "Where IS It Though?" Problem</h2>
+                <span class="step-badge">STEP 3</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    We never know <strong>exactly</strong> where a satellite is. Tracking stations measure it, but every measurement has errors. So instead of saying "the satellite is HERE," we say "the satellite is <em>probably</em> in this fuzzy cloud of possibilities."
+                </p>
+                <p>
+                    That fuzzy cloud? It's called a <strong>covariance matrix</strong>. It's a 6&times;6 grid of numbers that says "position could be off by X in this direction, Y in that direction, and here's how those errors are related."
+                </p>
+
+                <div class="analogy-box">
+                    <span class="analogy-label">&#x1F3AF; Real-World Analogy</span>
+                    <p>You're tracking your friend via "Find My Friends" but the GPS dot is a big blue circle. That circle IS the covariance. And in space, the circle gets bigger the longer since the last GPS fix. Yesterday's location? Huge circle. Five minutes ago? Tiny circle.</p>
+                </div>
+
+                <p>
+                    The cruel part: <strong>uncertainty grows over time</strong>. A satellite we tracked 5 minutes ago? We know where it is within 10 meters. Same satellite, 24 hours later with no new data? Could be off by a full kilometer. The fuzzy cloud expands relentlessly.
+                </p>
+            </div>
+        </section>
+
+        <!-- Section 4: Finding Collisions -->
+        <section class="science-card collision-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x1F4A5;</span>
+                <h2>Finding Who's About to Crash</h2>
+                <span class="step-badge">STEP 4</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    With 10,000 objects in orbit, there are <strong>~50 million possible collision pairs</strong>. Checking all of them thoroughly would take forever. So we use a fast-food drive-through approach:
+                </p>
+
+                <ol class="numbered-list">
+                    <li><strong>Quick height check:</strong> If satellite A never goes above 500 km and satellite B never goes below 600 km, they physically can't meet. Bye. Next pair.</li>
+                    <li><strong>Coarse time scan:</strong> For remaining pairs, check their distance every few minutes over the next 24 hours. Anyone that gets within 5 km gets flagged.</li>
+                    <li><strong>Precision math:</strong> For flagged pairs, find the exact closest approach moment and calculate the actual probability of collision.</li>
+                </ol>
+
+                <div class="fun-fact">
+                    <span class="fact-label">&#x1F3B0; Probability of Collision</span>
+                    <p>The "Pc" calculation is basically: take the two fuzzy clouds at closest approach, overlay them, and ask "what fraction of possibilities result in them overlapping?" If the answer is more than 1-in-10,000 (Pc &gt; 10&sup-4;), it's time to panic productively.</p>
+                </div>
+
+                <div class="analogy-box">
+                    <span class="analogy-label">&#x1F3AF; Real-World Analogy</span>
+                    <p>Two cars approaching an intersection, both with GPS errors. One might be in lane 1, 2, or 3. The other might arrive 2 seconds early or late. The "probability of collision" is the chance their error clouds overlap at the same spot at the same time. Except the cars are going 28,000 km/h and the intersection is in space.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: Dodging -->
+        <section class="science-card dodge-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x1F3CE;&#xFE0F;</span>
+                <h2>The Art of Space Dodging</h2>
+                <span class="step-badge">STEP 5</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    When we fire a thruster, we change velocity by a tiny amount (called <strong>&Delta;v</strong>, "delta-v"). This doesn't instantly move the satellite &mdash; instead, it slowly shifts the orbit so that hours later, the satellite is in a completely different spot.
+                </p>
+
+                <div class="equation-block">
+                    1 cm/s burn now &rarr; ~100 meters of miss distance later
+                </div>
+
+                <p>
+                    <strong>Timing is everything.</strong> An early nudge is worth way more than a last-second swerve. Same principle as steering a ship &mdash; adjust the wheel 1 degree now and you miss the iceberg by a mile. Wait until it's 10 meters away and you're on a Titanic sequel.
+                </p>
+
+                <div class="fun-fact">
+                    <span class="fact-label">&#x26FD; The Fuel Budget Problem</span>
+                    <p>A typical small satellite has <strong>25 m/s of &Delta;v for its entire lifetime</strong> (years of operations). Each dodge costs 0.5-5 m/s. That's like having a 10-gallon gas tank that has to last 5 years, and every pothole requires a gallon to avoid. You become VERY picky about which potholes matter.</p>
+                </div>
+
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Risk Level</th>
+                            <th>Probability</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="risk-badge critical">CRITICAL</span></td>
+                            <td>Pc &gt; 10&sup-4; (1 in 10,000)</td>
+                            <td>DODGE. Now. Burn fuel.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="risk-badge warning">ELEVATED</span></td>
+                            <td>Pc 10&sup-5; to 10&sup-4;</td>
+                            <td>Maybe dodge? Depends on fuel budget.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="risk-badge safe">ACCEPTABLE</span></td>
+                            <td>Pc &lt; 10&sup-5;</td>
+                            <td>Accept it. Save fuel for scarier stuff.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Section 6: Damage Minimization -->
+        <section class="science-card damage-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x1F6E1;&#xFE0F;</span>
+                <h2>When You Can't Dodge: Damage Control</h2>
+                <span class="step-badge">STEP 6</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    Sometimes there's no fuel left, or the warning comes too late. When a collision is unavoidable, the goal shifts from "avoid it" to "make it as gentle as possible."
+                </p>
+                <p>
+                    At 10 km/s relative speed, a 10 kg object hitting a 300 kg satellite releases energy equivalent to <strong>7 sticks of dynamite</strong>. Both objects shatter into thousands of pieces.
+                </p>
+
+                <div class="equation-block">
+                    E = &frac12; &times; m &times; v&sup2; &nbsp;&nbsp;&#8594;&nbsp;&nbsp; 1,670,000 J/kg (catastrophic threshold: 40,000 J/kg)
+                </div>
+
+                <p>Five strategies, ranked from "free" to "painful":</p>
+
+                <ol class="numbered-list">
+                    <li><strong>Turn sideways (&#x1F4B0; Free):</strong> Present your thinnest edge. Like turning a book edge-on to a thrown ball instead of catching it flat.</li>
+                    <li><strong>Make it a glancing blow (&#x1F4B0; Cheap):</strong> A 15&deg; glancing angle reduces effective impact energy by 93%. Car sideswipe vs. head-on.</li>
+                    <li><strong>Slow down the approach (&#x1F4B0;&#x1F4B0; Moderate):</strong> Reduce relative speed. Problem: you have a hand fan against a 10 km/s bullet. It helps, just... not a lot.</li>
+                    <li><strong>Push collision lower (&#x1F4B0;&#x1F4B0;&#x1F4B0; Expensive):</strong> Make debris at low altitude where air drag cleans it up in months, not centuries.</li>
+                    <li><strong>Sacrifice the spacecraft (&#x1F4B0;&#x1F4B0;&#x1F4B0;&#x1F4B0; Nuclear option):</strong> Deorbit yourself before impact. No satellite = no collision. Mission over though.</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- Section 7: The Big Brain -->
+        <section class="science-card brain-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x1F9E0;</span>
+                <h2>The AI Decision Engine</h2>
+                <span class="step-badge">STEP 7</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    The real challenge isn't handling ONE potential collision. It's handling <strong>hundreds simultaneously</strong>, with shared fuel budgets, interacting consequences, and cascading risks.
+                </p>
+                <p>
+                    Dodging satellite A away from debris B might push A <em>toward</em> satellite C. Spending fuel now means less fuel for an unknown future threat. It's a chess game where every move changes the board.
+                </p>
+
+                <div class="fun-fact">
+                    <span class="fact-label">&#x1F3B2; Three Strategies We Use</span>
+                    <p><strong>Greedy:</strong> Handle the scariest thing first. Fast, simple, usually good enough. Like paying off your highest-interest credit card first.</p>
+                    <p style="margin-top: 8px;"><strong>Network Flow:</strong> Model the whole problem as a graph and solve it optimally. Like a GPS that sees ALL traffic and finds the globally fastest routes for everyone simultaneously.</p>
+                    <p style="margin-top: 8px;"><strong>Monte Carlo Tree Search:</strong> The same algorithm that beats humans at Go. Explore thousands of "what if I do X, then Y, then Z..." scenarios and pick the sequence with the best outcome.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 8: Kessler Syndrome -->
+        <section class="science-card kessler-card">
+            <div class="card-header">
+                <span class="card-emoji">&#x2620;&#xFE0F;</span>
+                <h2>Kessler Syndrome: The Nightmare</h2>
+                <span class="step-badge">BONUS HORROR</span>
+            </div>
+            <div class="card-body">
+                <p>
+                    In 1978, NASA scientist Donald Kessler proposed a terrifying scenario: what if collisions create so much debris that the debris causes MORE collisions, which create MORE debris, in a runaway chain reaction?
+                </p>
+                <p>
+                    Eventually, certain orbital altitudes become <strong>permanent minefields</strong> that no spacecraft can safely use. For centuries. Maybe longer.
+                </p>
+
+                <div class="analogy-box">
+                    <span class="analogy-label">&#x1F3AF; Real-World Analogy</span>
+                    <p>Imagine a highway where every car crash creates 1,000 new invisible bumper cars that ricochet randomly at bullet speed. Eventually the highway becomes permanently unusable, and the ricocheting bumper cars start hitting cars on adjacent highways too. That's Kessler Syndrome.</p>
+                </div>
+
+                <p>
+                    The scariest part? The altitude band of 800-1000 km is already dangerously close to this tipping point. This system's job is to keep us on the safe side of that line.
+                </p>
+
+                <div class="fun-fact">
+                    <span class="fact-label">&#x1F4CA; Real Numbers</span>
+                    <p>One collision between two 1-ton satellites at orbital speed produces ~360 fragments larger than 10 cm (trackable) and ~18,000 fragments larger than 1 cm (lethal but invisible). Each one is a potential trigger for the next collision.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- TLDR -->
+        <section class="tldr-section">
+            <h2>&#x1F680; TL;DR</h2>
+            <p>
+                Thousands of objects zooming at 28,000 km/h. Can't easily stop. Limited fuel. Uncertain positions. Every crash makes it worse. Our job: figure out who's about to hit who, pick the smartest dodges, and keep the cascading space junkyard scenario from becoming reality.
+            </p>
+            <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.85rem;">
+                <em>Fuel is finite. Threats are infinite. Every decision has consequences for the future.<br>That's what makes it an AI problem.</em>
+            </p>
+        </section>
+
+        <footer class="page-footer">
+            ORBITAL SENTINEL &mdash; Science Explainer &mdash; 2026
+        </footer>
+    </div>
+</body>
+</html>

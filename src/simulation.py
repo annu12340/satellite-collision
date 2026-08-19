@@ -27,8 +27,11 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 from .utils import (
     MU_EARTH, R_EARTH, CATASTROPHIC_ENERGY,
     StateVector, Spacecraft, Conjunction, Maneuver, OrbitalElements,
-    coe_to_state, state_to_coe, orbital_period, circular_velocity
+    coe_to_state, state_to_coe, orbital_period, circular_velocity,
+    get_logger
 )
+
+logger = get_logger(__name__)
 from .orbital_mechanics import (
     propagate_state, generate_ephemeris, propagate_kepler
 )
@@ -249,10 +252,10 @@ class CollisionPreventionSimulation:
         seed : int
             Random seed
         """
-        print(f"{'='*70}")
-        print("   AI SATELLITE COLLISION PREVENTION SYSTEM")
-        print(f"{'='*70}")
-        print(f"\nInitializing simulation with {n_spacecraft} spacecraft...")
+        logger.info("=" * 70)
+        logger.info("   AI SATELLITE COLLISION PREVENTION SYSTEM")
+        logger.info("=" * 70)
+        logger.info("Initializing simulation with %d spacecraft...", n_spacecraft)
 
         self.spacecraft_list = generate_leo_constellation(n_spacecraft, seed=seed)
         self.spacecraft_list = inject_collision_scenario(self.spacecraft_list, seed=seed + 1)
@@ -274,11 +277,11 @@ class CollisionPreventionSimulation:
 
     def _print_constellation_summary(self):
         """Print summary of generated constellation."""
-        print(f"\n--- Constellation Summary ---")
-        print(f"  Total objects: {self.stats['spacecraft_total']}")
-        print(f"  Maneuverable: {self.stats['maneuverable']}")
-        print(f"  Non-maneuverable (debris/CubeSats): {self.stats['non_maneuverable']}")
-        print(f"  Total mass: {self.stats['total_mass_kg']:.0f} kg")
+        logger.info("--- Constellation Summary ---")
+        logger.info("  Total objects: %d", self.stats['spacecraft_total'])
+        logger.info("  Maneuverable: %d", self.stats['maneuverable'])
+        logger.info("  Non-maneuverable (debris/CubeSats): %d", self.stats['non_maneuverable'])
+        logger.info("  Total mass: %.0f kg", self.stats['total_mass_kg'])
 
         # Altitude distribution
         altitudes = []
@@ -286,8 +289,8 @@ class CollisionPreventionSimulation:
             coe = state_to_coe(sc.state)
             altitudes.append(coe.a - R_EARTH)
 
-        print(f"  Altitude range: {min(altitudes):.0f} - {max(altitudes):.0f} km")
-        print(f"  Mean altitude: {np.mean(altitudes):.0f} km")
+        logger.info("  Altitude range: %.0f - %.0f km", min(altitudes), max(altitudes))
+        logger.info("  Mean altitude: %.0f km", np.mean(altitudes))
 
     def run_screening(self, time_window_hours: float = 24.0,
                        distance_threshold_km: float = 25.0):

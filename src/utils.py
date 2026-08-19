@@ -2,9 +2,45 @@
 Constants, coordinate transforms, and helper utilities for orbital mechanics.
 """
 
+import logging
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional
+
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Get a configured logger for a module.
+
+    Usage:
+        logger = get_logger(__name__)
+        logger.info("Conjunction detected at t=%s", tca)
+
+    Parameters
+    ----------
+    name : str
+        Module name (typically __name__)
+
+    Returns
+    -------
+    logging.Logger
+        Configured logger instance
+    """
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%H:%M:%S"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    return logger
 
 # ============================================================================
 # PHYSICAL CONSTANTS

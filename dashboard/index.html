@@ -70,7 +70,30 @@
                 </div>
             </div>
             <div class="header-right">
-                <a href="/maneuver-viz.html" style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:#06ffd0;text-decoration:none;padding:5px 10px;border:1px solid rgba(6,255,208,0.3);border-radius:4px;margin-right:12px;transition:all 0.2s ease;" onmouseover="this.style.background='rgba(6,255,208,0.1)'" onmouseout="this.style.background='transparent'">MANEUVER VIZ</a>
+                <a href="/maneuver-viz.html" class="nav-btn-maneuver">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 13L8 3L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8 3L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+                        <circle cx="8" cy="3" r="1.5" fill="currentColor" opacity="0.8"/>
+                    </svg>
+                    <span>MANEUVER VIZ</span>
+                </a>
+                <a href="/science.html" class="nav-btn-maneuver">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <path d="M8 5v4M8 11v0.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <span>SCIENCE</span>
+                </a>
+                <a href="/architecture.html" class="nav-btn-maneuver">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <rect x="2" y="2" width="5" height="5" stroke="currentColor" stroke-width="1.5" fill="none" rx="1"/>
+                        <rect x="9" y="2" width="5" height="5" stroke="currentColor" stroke-width="1.5" fill="none" rx="1"/>
+                        <rect x="5.5" y="9" width="5" height="5" stroke="currentColor" stroke-width="1.5" fill="none" rx="1"/>
+                        <path d="M4.5 7L4.5 9M11.5 7L11.5 9M8 9L8 7" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+                    </svg>
+                    <span>ARCHITECTURE</span>
+                </a>
                 <div class="time-display">
                     <span id="utc-time"></span>
                     <span class="time-label">UTC</span>
@@ -264,9 +287,6 @@
                     <button class="rp-tab" data-tab="decision" id="rp-tab-decision">
                         <span class="rp-tab-icon">&#129504;</span> Decision
                     </button>
-                    <button class="rp-tab" data-tab="events" id="rp-tab-events">
-                        <span class="rp-tab-icon">&#128225;</span> Events
-                    </button>
                 </div>
 
                 <!-- Tab Content: Decision Engine -->
@@ -290,7 +310,7 @@
                         </div>
                     </div>
 
-                    <!-- Strategy & Candidates (merged compact panel) -->
+                    <!-- Strategy & Candidates (always visible) -->
                     <div class="de-strategy-compact" id="de-strategy-compact">
                         <!-- Winner badge: single row showing winning strategy + solve time -->
                         <div class="de-winner-badge" id="de-winner-badge">
@@ -298,24 +318,17 @@
                             <span class="de-winner-strategy" id="de-winner-strategy">--</span>
                             <span class="de-winner-meta" id="de-winner-meta"></span>
                         </div>
-                        <!-- Expandable candidates toggle -->
-                        <button class="de-expand-toggle" id="de-expand-toggle">
-                            <span id="de-expand-label">View all candidates</span>
-                            <span class="de-expand-arrow" id="de-expand-arrow">&#9660;</span>
-                        </button>
-                        <!-- Collapsible candidate table -->
-                        <div class="de-candidates-collapsible collapsed" id="de-candidates-collapsible">
-                            <div class="de-candidates" id="de-candidates">
-                                <div class="de-candidate-row de-candidate-header-row">
-                                    <span class="de-cand-id"></span>
-                                    <span class="de-cand-label">Action</span>
-                                    <span class="de-cand-risk">Residual Risk</span>
-                                    <span class="de-cand-fuel">&Delta;v</span>
-                                    <span class="de-cand-threats">Threats</span>
-                                </div>
-                                <div class="de-candidate-row de-placeholder">
-                                    <span class="de-cand-msg">Awaiting optimization...</span>
-                                </div>
+                        <!-- Candidate table (always shown) -->
+                        <div class="de-candidates" id="de-candidates">
+                            <div class="de-candidate-row de-candidate-header-row">
+                                <span class="de-cand-id"></span>
+                                <span class="de-cand-label">Action</span>
+                                <span class="de-cand-risk">Residual Risk</span>
+                                <span class="de-cand-fuel">&Delta;v</span>
+                                <span class="de-cand-threats">Threats</span>
+                            </div>
+                            <div class="de-candidate-row de-placeholder">
+                                <span class="de-cand-msg">Awaiting optimization...</span>
                             </div>
                         </div>
                     </div>
@@ -358,15 +371,11 @@
                         <span class="sim-status-label">Status</span>
                         <span class="sim-status-badge idle" id="sim-status">IDLE</span>
                     </div>
-                </div>
-                </div>
 
-                <!-- Tab Content: Events -->
-                <div class="rp-tab-content" id="rp-content-events">
-                <div class="panel-section sim-panel">
+                    <!-- Event Log (inline within Simulation tab) -->
                     <div class="sim-event-log-container">
                         <div class="sim-event-log-header">
-                            <span>&#128225; Live Events (SSE)</span>
+                            <span>&#128225; Live Events</span>
                         </div>
                         <div class="sim-event-log" id="sim-event-log">
                             <div class="event-entry event-info">
@@ -378,6 +387,8 @@
                     </div>
                 </div>
                 </div>
+
+
             </aside>
         </div>
     </div>

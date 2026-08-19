@@ -975,6 +975,12 @@ def serve_dashboard():
     return send_from_directory(app.static_folder, 'index.html')
 
 
+@app.route('/architecture.html')
+def serve_architecture():
+    """Serve the architecture & tech deep dive page."""
+    return send_from_directory(app.static_folder, 'architecture.html')
+
+
 @app.route('/api/spacecraft')
 def get_spacecraft():
     """All spacecraft with orbital data and paths."""

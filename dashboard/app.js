@@ -1515,6 +1515,9 @@ async function runFullSimulation() {
         populateDashboard();
         refreshOrbits3dPanel();
 
+        // Now that a simulation has run, populate the decision engine
+        fetchDecisionEngine();
+
         status.textContent = 'COMPLETE';
         status.className = 'sim-status-badge complete';
     } catch (err) {
@@ -2176,15 +2179,18 @@ function startSimulation() {
     stopSimulation();
 
     simPlayer.active = true;
-    document.getElementById('sim-status').textContent = 'LOADING...';
-    document.getElementById('sim-status').className = 'sim-status-badge connecting';
-    document.getElementById('sim-play-btn').disabled = true;
-    document.getElementById('sim-stop-btn').disabled = false;
-    document.getElementById('sim-event-log').innerHTML = '';
-    document.getElementById('sim-progress-fill').style.width = '0%';
+    const simStatus = document.getElementById('sim-status');
+    const simPlayBtn = document.getElementById('sim-play-btn');
+    const simStopBtn = document.getElementById('sim-stop-btn');
+    const simEventLog = document.getElementById('sim-event-log');
+    const simProgressFill = document.getElementById('sim-progress-fill');
+    if (simStatus) { simStatus.textContent = 'LOADING...'; simStatus.className = 'sim-status-badge connecting'; }
+    if (simPlayBtn) simPlayBtn.disabled = true;
+    if (simStopBtn) simStopBtn.disabled = false;
+    if (simEventLog) simEventLog.innerHTML = '';
+    if (simProgressFill) simProgressFill.style.width = '0%';
 
-    // Auto-switch to Events tab so the live feed is visible
-    switchRightPanelTab('events');
+    // Event log is now inline in the Simulation tab — no tab switch needed
 
     // Reset the left-sidebar live telemetry chart for the new run
     resetTelemetryPanel();
@@ -2203,9 +2209,10 @@ function startSimulation() {
             simPlayer.trailPoints1 = [];
             simPlayer.trailPoints2 = [];
 
-            document.getElementById('sim-status').textContent = 'LIVE';
-            document.getElementById('sim-status').className = 'sim-status-badge live';
-            document.getElementById('sim-scenario-name').textContent = scenario.name;
+            const liveStatus = document.getElementById('sim-status');
+            const scenarioName = document.getElementById('sim-scenario-name');
+            if (liveStatus) { liveStatus.textContent = 'LIVE'; liveStatus.className = 'sim-status-badge live'; }
+            if (scenarioName) scenarioName.textContent = scenario.name;
 
             teleState.scenario = scenario;
             setTelemetryBadge('live', 'LIVE');
@@ -2327,10 +2334,15 @@ function stopSimulation() {
         simPlayer.eventSource = null;
     }
     simPlayer.active = false;
-    document.getElementById('sim-status').textContent = 'IDLE';
-    document.getElementById('sim-status').className = 'sim-status-badge idle';
-    document.getElementById('sim-play-btn').disabled = false;
-    document.getElementById('sim-stop-btn').disabled = true;
+    const simStatus = document.getElementById('sim-status');
+    const simPlayBtn = document.getElementById('sim-play-btn');
+    const simStopBtn = document.getElementById('sim-stop-btn');
+    if (simStatus) {
+        simStatus.textContent = 'IDLE';
+        simStatus.className = 'sim-status-badge idle';
+    }
+    if (simPlayBtn) simPlayBtn.disabled = false;
+    if (simStopBtn) simStopBtn.disabled = true;
 
     setTelemetryBadge('idle', 'IDLE');
     bplaneState.active = false;
@@ -3726,26 +3738,12 @@ function initDecisionEngine() {
         refreshBtn.addEventListener('click', fetchDecisionEngine);
     }
 
-    // Wire up the expand/collapse toggle for candidate actions
-    const expandToggle = document.getElementById('de-expand-toggle');
-    if (expandToggle) {
-        expandToggle.addEventListener('click', () => {
-            const collapsible = document.getElementById('de-candidates-collapsible');
-            const arrow = document.getElementById('de-expand-arrow');
-            const label = document.getElementById('de-expand-label');
-            if (collapsible) {
-                const isCollapsed = collapsible.classList.toggle('collapsed');
-                if (arrow) arrow.classList.toggle('expanded', !isCollapsed);
-                if (label) label.textContent = isCollapsed ? 'View all candidates' : 'Hide candidates';
-            }
-        });
-    }
-
     // Right panel tab switching
     initRightPanelTabs();
 
-    // Initial fetch
-    fetchDecisionEngine();
+    // Do NOT auto-fetch on page load. Decision engine data should only
+    // appear after the user explicitly runs a simulation.
+    renderDecisionEngineEmpty('Run a simulation to activate the decision engine.');
 }
 
 function initRightPanelTabs() {
@@ -3888,18 +3886,25 @@ function renderDecisionEngine(data) {
         winnerMetaEl.textContent = ms > 1000 ? (ms / 1000).toFixed(1) + 's' : ms.toFixed(0) + 'ms';
     }
 
-    // Candidates table - with full differentiation
+    // Candidates table - with full context details
     const container = document.getElementById('de-candidates');
     if (container) {
         let html = `
             <div class="de-candidate-row de-candidate-header-row">
                 <span class="de-cand-id"></span>
-                <span class="de-cand-label">Action</span>
+                <span class="de-cand-label">Strategy</span>
                 <span class="de-cand-risk">Residual Risk</span>
                 <span class="de-cand-fuel">\u0394v</span>
-                <span class="de-cand-threats">Threats</span>
+                <span class="de-cand-threats">Resolved</span>
             </div>
         `;
+
+        const strategyDescriptions = {
+            'none': 'Accept current risk. No fuel expenditure. Risk of cascade debris generation remains.',
+            'greedy': 'Resolves highest-risk conjunctions first. Fast solve, good heuristic but not globally optimal.',
+            'network_flow': 'Fuel-optimal assignment via min-cost max-flow graph formulation. Provably optimal resource allocation.',
+            'mcts': 'Monte Carlo Tree Search with multi-step lookahead. Explores maneuver sequences for long-term risk minimization.',
+        };
 
         candidates.forEach((cand) => {
             const isRec = cand.id === recommended.candidate_id;
@@ -3921,7 +3926,7 @@ function renderDecisionEngine(data) {
                 ? '\u2212' + cand.conjunctions_resolved
                 : '0';
 
-            // Short label
+            // Full label
             let shortLabel = cand.strategy === 'none' ? 'No maneuver'
                 : cand.strategy === 'greedy' ? 'Greedy'
                 : cand.strategy === 'network_flow' ? 'Network Flow'
@@ -3930,13 +3935,45 @@ function renderDecisionEngine(data) {
 
             const starPrefix = isRec ? '\u2605 ' : '';
 
+            // Solve time
+            const solveTime = cand.solve_time_ms
+                ? cand.solve_time_ms > 1000
+                    ? (cand.solve_time_ms / 1000).toFixed(1) + 's'
+                    : cand.solve_time_ms.toFixed(0) + 'ms'
+                : '';
+
+            // Risk reduction percentage
+            const riskReduction = situation.total_risk_score > 0 && cand.strategy !== 'none'
+                ? (((situation.total_risk_score - cand.residual_risk) / situation.total_risk_score) * 100).toFixed(0)
+                : null;
+
+            // Build maneuver detail lines
+            let maneuverDetails = '';
+            if (cand.maneuvers && cand.maneuvers.length > 0) {
+                maneuverDetails = cand.maneuvers.map(m => {
+                    const scName = m.spacecraft_name || m.spacecraft_id;
+                    return `<span class="de-detail-maneuver">\u2022 ${scName}: \u0394v=${m.delta_v_ms.toFixed(1)} m/s</span>`;
+                }).join('');
+            }
+
+            const description = strategyDescriptions[cand.strategy] || '';
+
             html += `
-                <div class="de-candidate-row ${isRec ? 'de-recommended-row' : ''} ${cand.strategy === 'none' ? 'de-baseline-row' : ''}">
-                    <span class="de-cand-id">${starPrefix}${cand.id}</span>
-                    <span class="de-cand-label" title="${cand.label}">${shortLabel}</span>
-                    <span class="de-cand-risk">${riskDisplay}</span>
-                    <span class="de-cand-fuel">${fuelDisplay}</span>
-                    <span class="de-cand-threats">${threatsDisplay}</span>
+                <div class="de-candidate-block ${isRec ? 'de-recommended-block' : ''} ${cand.strategy === 'none' ? 'de-baseline-block' : ''}">
+                    <div class="de-candidate-row ${isRec ? 'de-recommended-row' : ''} ${cand.strategy === 'none' ? 'de-baseline-row' : ''}">
+                        <span class="de-cand-id">${starPrefix}${cand.id}</span>
+                        <span class="de-cand-label" title="${cand.label}">${shortLabel}</span>
+                        <span class="de-cand-risk">${riskDisplay}</span>
+                        <span class="de-cand-fuel">${fuelDisplay}</span>
+                        <span class="de-cand-threats">${threatsDisplay}</span>
+                    </div>
+                    <div class="de-candidate-details">
+                        <span class="de-detail-desc">${description}</span>
+                        ${riskReduction !== null ? `<span class="de-detail-stat"><span class="de-detail-label">Risk reduction:</span> <span class="de-detail-value">${riskReduction}%</span></span>` : ''}
+                        ${solveTime ? `<span class="de-detail-stat"><span class="de-detail-label">Solve time:</span> <span class="de-detail-value">${solveTime}</span></span>` : ''}
+                        ${cand.residual_pc !== undefined && cand.strategy !== 'none' ? `<span class="de-detail-stat"><span class="de-detail-label">Residual P<sub>c</sub>:</span> <span class="de-detail-value">${cand.residual_pc.toExponential(1)}</span></span>` : ''}
+                        ${maneuverDetails ? `<div class="de-detail-maneuvers"><span class="de-detail-label">Planned burns:</span>${maneuverDetails}</div>` : ''}
+                    </div>
                 </div>
             `;
         });
@@ -3974,7 +4011,7 @@ function renderDecisionEngine(data) {
         recResolvedEl.textContent = `\u2212${recommended.conjunctions_resolved}`;
     }
     if (recReasonEl) {
-        recReasonEl.textContent = `Resolves ${recommended.conjunctions_resolved} conjunction(s). Creates 0 secondary threats.`;
+        recReasonEl.textContent = recommended.reason || `Resolves ${recommended.conjunctions_resolved} conjunction(s). Creates 0 secondary threats.`;
     }
 }
 
