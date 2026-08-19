@@ -247,17 +247,21 @@ function createStarfield() {
 // ============================================================================
 
 function createEarth() {
-    // Earth sphere with procedural shader
+    // Earth sphere with realistic texture from NASA imagery
     const earthGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
 
-    // Custom shader material for Earth
+    const textureLoader = new THREE.TextureLoader();
+
+    // Load NASA Blue Marble Earth texture
+    const earthDayTexture = textureLoader.load(
+        'https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg'
+    );
+
+    // Custom shader material for realistic Earth with texture
     const earthMaterial = new THREE.ShaderMaterial({
         uniforms: {
             sunDirection: { value: new THREE.Vector3(1, 0.5, 0.7).normalize() },
-            earthColor1: { value: new THREE.Color(0x0a1628) },   // Dark ocean
-            earthColor2: { value: new THREE.Color(0x0d2847) },   // Deep ocean
-            landColor1: { value: new THREE.Color(0x1a3a2a) },    // Dark land
-            landColor2: { value: new THREE.Color(0x2d5a3a) },    // Land highlight
+            dayTexture: { value: earthDayTexture },
             atmosphereColor: { value: new THREE.Color(0x4488ff) },
             time: { value: 0 }
         },
@@ -275,10 +279,7 @@ function createEarth() {
         `,
         fragmentShader: `
             uniform vec3 sunDirection;
-            uniform vec3 earthColor1;
-            uniform vec3 earthColor2;
-            uniform vec3 landColor1;
-            uniform vec3 landColor2;
+            uniform sampler2D dayTexture;
             uniform vec3 atmosphereColor;
             uniform float time;
 
@@ -286,62 +287,25 @@ function createEarth() {
             varying vec3 vPosition;
             varying vec2 vUv;
 
-            // Simplex noise approximation
-            float hash(vec2 p) {
-                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-            }
-
-            float noise(vec2 p) {
-                vec2 i = floor(p);
-                vec2 f = fract(p);
-                f = f * f * (3.0 - 2.0 * f);
-                float a = hash(i);
-                float b = hash(i + vec2(1.0, 0.0));
-                float c = hash(i + vec2(0.0, 1.0));
-                float d = hash(i + vec2(1.0, 1.0));
-                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-            }
-
-            float fbm(vec2 p) {
-                float value = 0.0;
-                float amplitude = 0.5;
-                for (int i = 0; i < 5; i++) {
-                    value += amplitude * noise(p);
-                    p *= 2.0;
-                    amplitude *= 0.5;
-                }
-                return value;
-            }
-
             void main() {
-                // Generate continent-like pattern
-                vec2 uv = vUv * 8.0;
-                float continents = fbm(uv + vec2(time * 0.001));
-                float landMask = smoothstep(0.45, 0.55, continents);
-
-                // Ocean colors
-                vec3 ocean = mix(earthColor1, earthColor2, fbm(vUv * 12.0));
-
-                // Land colors
-                vec3 land = mix(landColor1, landColor2, fbm(vUv * 20.0));
-
-                // Mix land and ocean
-                vec3 surface = mix(ocean, land, landMask);
+                // Sample the Earth texture
+                vec3 surface = texture2D(dayTexture, vUv).rgb;
 
                 // Lighting
                 float diffuse = max(dot(vNormal, sunDirection), 0.0);
-                float ambient = 0.08;
-                float lighting = ambient + diffuse * 0.9;
+                float ambient = 0.12;
+                float lighting = ambient + diffuse * 0.88;
 
                 // Fresnel (atmosphere edge glow)
                 vec3 viewDir = normalize(-vPosition);
                 float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 3.0);
-                vec3 atmosphereGlow = atmosphereColor * fresnel * 0.4;
+                vec3 atmosphereGlow = atmosphereColor * fresnel * 0.35;
 
-                // City lights on dark side
+                // City lights on dark side (approximate from texture darkness)
                 float nightMask = smoothstep(0.0, -0.15, diffuse);
-                float cities = step(0.7, fbm(vUv * 40.0)) * landMask;
-                vec3 cityLights = vec3(1.0, 0.85, 0.5) * cities * nightMask * 0.6;
+                float landBrightness = dot(surface, vec3(0.3, 0.5, 0.2));
+                float cities = smoothstep(0.15, 0.35, landBrightness) * nightMask;
+                vec3 cityLights = vec3(1.0, 0.85, 0.5) * cities * 0.4;
 
                 vec3 color = surface * lighting + atmosphereGlow + cityLights;
                 gl_FragColor = vec4(color, 1.0);
@@ -477,25 +441,17 @@ function createOrbits() {
 
         const isCriticalPair = criticalIds.has(sc.id);
 
-        // Color and opacity based on whether this is the critical pair
+        // Color based on spacecraft type (consistent styling for all orbits)
         let color, opacity, linewidth;
-        if (isCriticalPair) {
-            // Bright red for critical pair orbits
-            color = new THREE.Color(0xff2d55);
-            opacity = 0.9;
-            linewidth = 2.5;
-        } else {
-            // Faded background orbits
-            switch (sc.type) {
-                case 'COMSAT': color = new THREE.Color(0x00d4ff); break;
-                case 'EOS': color = new THREE.Color(0x7b2ff7); break;
-                case 'CUBE': color = new THREE.Color(0x06ffd0); break;
-                case 'DEBRIS': color = new THREE.Color(0x5a6b8a); break;
-                default: color = new THREE.Color(0x3a5588);
-            }
-            opacity = sc.type === 'DEBRIS' ? 0.08 : 0.12;
-            linewidth = 0.8;
+        switch (sc.type) {
+            case 'COMSAT': color = new THREE.Color(0x00d4ff); break;
+            case 'EOS': color = new THREE.Color(0x7b2ff7); break;
+            case 'CUBE': color = new THREE.Color(0x06ffd0); break;
+            case 'DEBRIS': color = new THREE.Color(0x5a6b8a); break;
+            default: color = new THREE.Color(0x3a5588);
         }
+        opacity = sc.type === 'DEBRIS' ? 0.08 : 0.12;
+        linewidth = 0.8;
 
         const material = new THREE.LineBasicMaterial({
             color: color,
@@ -531,67 +487,143 @@ function createSpacecraft() {
             sc.position[1] * SCALE
         );
 
-        // Spacecraft marker
-        let color, size;
+        // Spacecraft appearance based on type
+        let color, size, mesh;
         switch (sc.type) {
             case 'COMSAT':
                 color = 0x00d4ff;
-                size = 0.015;
+                size = 0.012;
                 break;
             case 'EOS':
                 color = 0x7b2ff7;
-                size = 0.018;
+                size = 0.014;
                 break;
             case 'CUBE':
                 color = 0x06ffd0;
-                size = 0.01;
+                size = 0.008;
                 break;
             case 'DEBRIS':
                 color = 0x8b9cc0;
-                size = 0.012;
+                size = 0.006;
                 break;
             default:
                 color = 0xffffff;
-                size = 0.012;
+                size = 0.01;
         }
 
-        // Create a glowing point sprite
-        const spriteMaterial = new THREE.SpriteMaterial({
-            color: color,
-            transparent: true,
-            opacity: 0.9,
-            sizeAttenuation: true
-        });
+        if (sc.type === 'DEBRIS') {
+            // Debris: irregular jagged rock-like shape
+            const debrisGeom = new THREE.IcosahedronGeometry(size, 0);
+            // Distort vertices for irregular shape
+            const posAttr = debrisGeom.attributes.position;
+            for (let v = 0; v < posAttr.count; v++) {
+                const scale = 0.6 + Math.random() * 0.8;
+                posAttr.setX(v, posAttr.getX(v) * scale);
+                posAttr.setY(v, posAttr.getY(v) * scale);
+                posAttr.setZ(v, posAttr.getZ(v) * scale);
+            }
+            posAttr.needsUpdate = true;
+            debrisGeom.computeVertexNormals();
 
-        const sprite = new THREE.Sprite(spriteMaterial);
-        sprite.position.copy(pos);
-        sprite.scale.set(size, size, size);
-        sprite.userData = { type: 'spacecraft', data: sc, index: idx };
+            const debrisMat = new THREE.MeshStandardMaterial({
+                color: 0x6a7080,
+                roughness: 0.85,
+                metalness: 0.4,
+                flatShading: true
+            });
+            mesh = new THREE.Mesh(debrisGeom, debrisMat);
+            mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        } else if (sc.type === 'CUBE') {
+            // CubeSat: small box
+            const cubeGeom = new THREE.BoxGeometry(size, size, size * 1.5);
+            const cubeMat = new THREE.MeshStandardMaterial({
+                color: 0x222222,
+                roughness: 0.3,
+                metalness: 0.8
+            });
+            mesh = new THREE.Mesh(cubeGeom, cubeMat);
+
+            // Small solar panel on one face
+            const panelGeom = new THREE.PlaneGeometry(size * 2, size * 0.8);
+            const panelMat = new THREE.MeshStandardMaterial({
+                color: 0x1a237e,
+                roughness: 0.2,
+                metalness: 0.6,
+                side: THREE.DoubleSide
+            });
+            const panel = new THREE.Mesh(panelGeom, panelMat);
+            panel.position.set(0, size * 0.9, 0);
+            mesh.add(panel);
+        } else {
+            // COMSAT / EOS: satellite body + solar panel wings
+            const bodyGeom = new THREE.CylinderGeometry(size * 0.4, size * 0.4, size * 1.2, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: 0xcccccc,
+                roughness: 0.3,
+                metalness: 0.7
+            });
+            mesh = new THREE.Mesh(bodyGeom, bodyMat);
+            mesh.rotation.z = Math.PI / 2;
+
+            // Solar panel wings (two flat rectangles extending to sides)
+            const panelGeom = new THREE.PlaneGeometry(size * 2.5, size * 0.8);
+            const panelMat = new THREE.MeshStandardMaterial({
+                color: 0x1a237e,
+                roughness: 0.2,
+                metalness: 0.5,
+                side: THREE.DoubleSide
+            });
+
+            const panelLeft = new THREE.Mesh(panelGeom, panelMat);
+            panelLeft.position.set(-size * 1.8, 0, 0);
+            mesh.add(panelLeft);
+
+            const panelRight = new THREE.Mesh(panelGeom, panelMat);
+            panelRight.position.set(size * 1.8, 0, 0);
+            mesh.add(panelRight);
+
+            // Antenna dish (small cone on top for COMSAT)
+            if (sc.type === 'COMSAT') {
+                const dishGeom = new THREE.ConeGeometry(size * 0.3, size * 0.5, 8);
+                const dishMat = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    roughness: 0.4,
+                    metalness: 0.6
+                });
+                const dish = new THREE.Mesh(dishGeom, dishMat);
+                dish.position.set(0, size * 0.8, 0);
+                dish.rotation.z = Math.PI / 2;
+                mesh.add(dish);
+            }
+        }
+
+        mesh.position.copy(pos);
+        mesh.userData = { type: 'spacecraft', data: sc, index: idx };
 
         // Precompute the orbit path in scene-space for real-time motion
         if (sc.orbit_path && sc.orbit_path.length > 1 && sc.period_min) {
-            sprite.userData.orbitPoints = sc.orbit_path.map(p =>
+            mesh.userData.orbitPoints = sc.orbit_path.map(p =>
                 new THREE.Vector3(p[0] * SCALE, p[2] * SCALE, p[1] * SCALE)
             );
-            sprite.userData.periodSec = sc.period_min * 60;
+            mesh.userData.periodSec = sc.period_min * 60;
         }
 
-        scGroup.add(sprite);
-        spacecraftMeshes.push(sprite);
+        scGroup.add(mesh);
+        spacecraftMeshes.push(mesh);
 
-        // Add small glow sphere for maneuverable spacecraft
+        // Add subtle status glow for maneuverable spacecraft
         if (sc.maneuverable && sc.type !== 'DEBRIS') {
-            const glowGeom = new THREE.SphereGeometry(size * 1.5, 8, 8);
+            const glowGeom = new THREE.SphereGeometry(size * 2, 8, 8);
             const glowMat = new THREE.MeshBasicMaterial({
                 color: color,
                 transparent: true,
-                opacity: 0.15,
+                opacity: 0.1,
                 blending: THREE.AdditiveBlending
             });
             const glow = new THREE.Mesh(glowGeom, glowMat);
             glow.position.copy(pos);
             scGroup.add(glow);
-            sprite.userData.glowMesh = glow;
+            mesh.userData.glowMesh = glow;
         }
     });
 
@@ -849,12 +881,44 @@ function createConjunctions() {
 function createDebris() {
     if (!simData || !simData.debris) return;
 
-    const particleCount = 2000;
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-    const sizes = new Float32Array(particleCount);
+    const debrisGroup = new THREE.Group();
+    debrisGroup.name = 'debrisField';
 
-    let idx = 0;
+    // Pre-create a few debris geometry templates for variety
+    const debrisTemplates = [];
+    for (let t = 0; t < 5; t++) {
+        const geom = new THREE.IcosahedronGeometry(1, 0);
+        const posAttr = geom.attributes.position;
+        for (let v = 0; v < posAttr.count; v++) {
+            const scale = 0.4 + Math.random() * 1.2;
+            posAttr.setX(v, posAttr.getX(v) * scale);
+            posAttr.setY(v, posAttr.getY(v) * (0.3 + Math.random() * 0.7));
+            posAttr.setZ(v, posAttr.getZ(v) * scale);
+        }
+        posAttr.needsUpdate = true;
+        geom.computeVertexNormals();
+        debrisTemplates.push(geom);
+    }
+
+    // Debris materials: mix of scorched metal, carbon, and reflective foil
+    const debrisMaterials = [
+        new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9, metalness: 0.3, flatShading: true }),
+        new THREE.MeshStandardMaterial({ color: 0x6a6a6a, roughness: 0.6, metalness: 0.7, flatShading: true }),
+        new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.8, metalness: 0.2, flatShading: true }),
+        new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.9, flatShading: true }),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95, metalness: 0.1, flatShading: true }),
+    ];
+
+    // Also create flat panel fragments (torn solar panels, hull plating)
+    const panelGeom = new THREE.PlaneGeometry(1, 1);
+    const panelMaterials = [
+        new THREE.MeshStandardMaterial({ color: 0x1a237e, roughness: 0.2, metalness: 0.6, side: THREE.DoubleSide, flatShading: true }),
+        new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.4, metalness: 0.8, side: THREE.DoubleSide, flatShading: true }),
+    ];
+
+    let totalFragments = 0;
+    const maxFragments = 1500;
+
     simData.debris.forEach(d => {
         const centerPos = new THREE.Vector3(
             d.position[0] * SCALE,
@@ -862,48 +926,51 @@ function createDebris() {
             d.position[1] * SCALE
         );
 
-        const fragments = Math.min(d.fragment_count_10cm, 600);
-        for (let i = 0; i < fragments && idx < particleCount; i++) {
-            // Spread debris in a cloud around the collision point
+        const fragments = Math.min(d.fragment_count_10cm, 400);
+        for (let i = 0; i < fragments && totalFragments < maxFragments; i++) {
             const spread = 0.08;
-            positions[idx * 3] = centerPos.x + (Math.random() - 0.5) * spread;
-            positions[idx * 3 + 1] = centerPos.y + (Math.random() - 0.5) * spread;
-            positions[idx * 3 + 2] = centerPos.z + (Math.random() - 0.5) * spread;
+            const px = centerPos.x + (Math.random() - 0.5) * spread;
+            const py = centerPos.y + (Math.random() - 0.5) * spread;
+            const pz = centerPos.z + (Math.random() - 0.5) * spread;
 
-            // Color: red-orange for dangerous, gray for small
-            const danger = Math.random();
-            if (danger > 0.7) {
-                colors[idx * 3] = 1.0;
-                colors[idx * 3 + 1] = 0.3 + Math.random() * 0.3;
-                colors[idx * 3 + 2] = 0.1;
+            let fragment;
+            if (Math.random() > 0.75) {
+                // Flat panel fragment (torn solar panel or hull plate)
+                const mat = panelMaterials[Math.floor(Math.random() * panelMaterials.length)];
+                fragment = new THREE.Mesh(panelGeom, mat);
+                const s = 0.003 + Math.random() * 0.006;
+                fragment.scale.set(s, s * (0.5 + Math.random()), 1);
             } else {
-                colors[idx * 3] = 0.5;
-                colors[idx * 3 + 1] = 0.5;
-                colors[idx * 3 + 2] = 0.6;
+                // Irregular chunk
+                const templateIdx = Math.floor(Math.random() * debrisTemplates.length);
+                const matIdx = Math.floor(Math.random() * debrisMaterials.length);
+                fragment = new THREE.Mesh(debrisTemplates[templateIdx], debrisMaterials[matIdx]);
+                const s = 0.002 + Math.random() * 0.005;
+                fragment.scale.set(s, s, s);
             }
 
-            sizes[idx] = 0.5 + Math.random() * 2.0;
-            idx++;
+            fragment.position.set(px, py, pz);
+            fragment.rotation.set(
+                Math.random() * Math.PI * 2,
+                Math.random() * Math.PI * 2,
+                Math.random() * Math.PI * 2
+            );
+
+            // Store tumble speed for animation
+            fragment.userData.tumbleSpeed = {
+                x: (Math.random() - 0.5) * 0.02,
+                y: (Math.random() - 0.5) * 0.02,
+                z: (Math.random() - 0.5) * 0.01
+            };
+
+            debrisGroup.add(fragment);
+            totalFragments++;
         }
     });
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
-    const material = new THREE.PointsMaterial({
-        size: 0.008,
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.7,
-        sizeAttenuation: true,
-        blending: THREE.AdditiveBlending
-    });
-
-    debrisParticles = new THREE.Points(geometry, material);
-    debrisParticles.visible = vizState.showDebris;
-    scene.add(debrisParticles);
+    debrisGroup.visible = vizState.showDebris;
+    scene.add(debrisGroup);
+    debrisParticles = debrisGroup;
 }
 
 // ============================================================================
@@ -1009,10 +1076,14 @@ function populateDashboard() {
     simData.spacecraft.forEach(sc => {
         if (types.hasOwnProperty(sc.type)) types[sc.type]++;
     });
-    document.getElementById('c-comsat').textContent = types.COMSAT;
-    document.getElementById('c-eos').textContent = types.EOS;
-    document.getElementById('c-cube').textContent = types.CUBE;
-    document.getElementById('c-debris').textContent = types.DEBRIS;
+    const cComsat = document.getElementById('c-comsat');
+    const cEos = document.getElementById('c-eos');
+    const cCube = document.getElementById('c-cube');
+    const cDebris = document.getElementById('c-debris');
+    if (cComsat) cComsat.textContent = types.COMSAT;
+    if (cEos) cEos.textContent = types.EOS;
+    if (cCube) cCube.textContent = types.CUBE;
+    if (cDebris) cDebris.textContent = types.DEBRIS;
 
     // Conjunction list
     populateConjunctionList();
@@ -1029,6 +1100,7 @@ function populateDashboard() {
 
 function populateConjunctionList() {
     const container = document.getElementById('conjunction-list');
+    if (!container) return;
     container.innerHTML = '';
 
     simData.conjunctions.forEach((conj, idx) => {
@@ -1967,22 +2039,26 @@ function animate() {
     // Rotate the radar sweep wedge
     if (radarSweep) radarSweep.rotation.y += 0.008;
 
-    // Animate debris particles
+    // Animate debris fragments (tumble and orbital drift)
     if (debrisParticles && debrisParticles.visible) {
-        const positions = debrisParticles.geometry.attributes.position.array;
-        for (let i = 0; i < positions.length; i += 3) {
-            if (positions[i] !== 0) {
-                // Orbital drift
-                const r = Math.sqrt(positions[i] ** 2 + positions[i + 1] ** 2 + positions[i + 2] ** 2);
-                const speed = 0.0005 / Math.max(r, 0.1);
-                const angle = speed;
-                const x = positions[i];
-                const z = positions[i + 2];
-                positions[i] = x * Math.cos(angle) - z * Math.sin(angle);
-                positions[i + 2] = x * Math.sin(angle) + z * Math.cos(angle);
+        debrisParticles.children.forEach(fragment => {
+            // Tumble rotation
+            if (fragment.userData.tumbleSpeed) {
+                fragment.rotation.x += fragment.userData.tumbleSpeed.x;
+                fragment.rotation.y += fragment.userData.tumbleSpeed.y;
+                fragment.rotation.z += fragment.userData.tumbleSpeed.z;
             }
-        }
-        debrisParticles.geometry.attributes.position.needsUpdate = true;
+            // Slow orbital drift
+            const pos = fragment.position;
+            const r = pos.length();
+            if (r > 0.1) {
+                const speed = 0.0003 / r;
+                const x = pos.x;
+                const z = pos.z;
+                pos.x = x * Math.cos(speed) - z * Math.sin(speed);
+                pos.z = x * Math.sin(speed) + z * Math.cos(speed);
+            }
+        });
     }
 
     controls.update();
@@ -2207,8 +2283,10 @@ function playScenarioFrames(scenario) {
 
         // Update progress
         const pct = (frameData.progress * 100).toFixed(1);
-        document.getElementById('sim-progress-fill').style.width = pct + '%';
-        document.getElementById('sim-distance').textContent = dist.toFixed(1) + ' km';
+        const progressFill = document.getElementById('sim-progress-fill');
+        const simDistance = document.getElementById('sim-distance');
+        if (progressFill) progressFill.style.width = pct + '%';
+        if (simDistance) simDistance.textContent = dist.toFixed(1) + ' km';
 
         // Update the in-viewport telemetry HUD
         updateSimHud(scenario, frame, dist);

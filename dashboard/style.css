@@ -285,7 +285,7 @@ body {
 
 .dash-content {
     display: flex;
-    height: calc(100vh - var(--header-height));
+    height: calc(100vh - var(--header-height) - 38px);
 }
 
 .panel {
@@ -857,49 +857,49 @@ body {
 }
 
 /* ============================================================================
-   SIMULATION HUD (in-viewport telemetry overlay)
+   HUD STRIP (top-level bar between header and 3-column body)
    ============================================================================ */
 
-#sim-hud {
-    position: absolute;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
+.hud-strip {
     display: flex;
-    gap: 20px;
-    background: rgba(10, 14, 23, 0.88);
-    border: 1px solid var(--border-glow);
-    border-radius: var(--radius);
-    padding: 10px 22px;
-    backdrop-filter: blur(12px);
-    box-shadow: var(--shadow-md), 0 0 24px rgba(0, 212, 255, 0.06);
-    z-index: 18;
-    pointer-events: none;
-}
-
-.hud-row {
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 3px;
-    min-width: 64px;
+    justify-content: center;
+    gap: 0;
+    background: rgba(10, 14, 23, 0.95);
+    border-bottom: 1px solid var(--border-color);
+    padding: 8px 24px;
+    position: relative;
+    z-index: 18;
 }
 
-.hud-label {
+.hud-strip .hud-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 20px;
+}
+
+.hud-strip .hud-label {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.52rem;
+    font-size: 0.6rem;
     color: var(--text-muted);
-    letter-spacing: 1.2px;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
     white-space: nowrap;
 }
 
-.hud-value {
+.hud-strip .hud-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--accent-cyan);
     white-space: nowrap;
+}
+
+.hud-separator {
+    width: 1px;
+    height: 18px;
+    background: var(--border-color);
 }
 
 .hud-value.hud-warning { color: var(--risk-high); }
@@ -2154,12 +2154,8 @@ body {
 }
 
 /* ============================================================================
-   BOTTOM MIDDLE SECTION (Decision Engine relocated to right panel)
+   BOTTOM MIDDLE SECTION (removed — decision engine in right panel)
    ============================================================================ */
-
-.bottom-middle-section {
-    display: none;
-}
 
 /* ============================================================================
    DECISION ENGINE HERO (Right Panel)

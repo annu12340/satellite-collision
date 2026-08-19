@@ -78,13 +78,35 @@
             </div>
         </header>
 
-        <!-- Main Content -->
-        <div class="dash-content">
-            <!-- Left Panel (compact) -->
-            <aside class="panel panel-left">
-      
+        <!-- HUD Strip (top-level, spans full width) -->
+        <div class="hud-strip" id="sim-hud">
+            <div class="hud-row">
+                <span class="hud-label">Current separation</span>
+                <span class="hud-value" id="hud-distance">-- km</span>
+            </div>
+            <div class="hud-separator"></div>
+            <div class="hud-row">
+                <span class="hud-label">Predicted miss distance</span>
+                <span class="hud-value" id="hud-miss-distance">-- km</span>
+            </div>
+            <div class="hud-separator"></div>
+            <div class="hud-row">
+                <span class="hud-label">Closing velocity</span>
+                <span class="hud-value" id="hud-velocity">-- km/s</span>
+            </div>
+            <div class="hud-separator"></div>
+            <div class="hud-row">
+                <span class="hud-label">Time to TCA</span>
+                <span class="hud-value" id="hud-tca">--</span>
+            </div>
+        </div>
 
-                <!-- Live Telemetry (populates dynamically while a scenario runs) -->
+        <!-- Main Content (3-column) -->
+        <div class="dash-content">
+            <!-- Left Panel: Telemetry + B-Plane -->
+            <aside class="panel panel-left">
+
+                <!-- Live Telemetry -->
                 <div class="panel-section telemetry-section">
                     <h3 class="section-title">
                         <span class="title-icon">&#128225;</span>
@@ -93,7 +115,6 @@
                     </h3>
                     <canvas id="telemetry-chart" width="260" height="92"></canvas>
 
-                    <!-- Physics equation, evaluated live with the current frame's numbers -->
                     <div class="physics-readout" id="physics-readout">
                         <div class="physics-row">
                             <span class="physics-eq">d(t) = |r&#8321;(t) &minus; r&#8322;(t)|</span>
@@ -109,41 +130,34 @@
                         </div>
                     </div>
 
-                    <div class="telemetry-hint" id="telemetry-hint">Run a scenario (Live Events panel) to see live range telemetry</div>
+                    <div class="telemetry-hint" id="telemetry-hint">Run a scenario to see live range telemetry</div>
                 </div>
 
-                <!-- Live B-Plane Encounter Geometry -->
+                <!-- B-Plane Encounter Geometry -->
                 <div class="panel-section bplane-section">
                     <h3 class="section-title">
                         <span class="title-icon">&#127919;</span>
                         B-Plane Encounter Geometry
                         <span class="sim-status-badge idle" id="bplane-badge">IDLE</span>
                     </h3>
-                    <canvas id="bplane-chart" width="260" height="220"></canvas>
+                    <canvas id="bplane-chart" width="260" height="260"></canvas>
                     <div class="bplane-readout">
                         <div class="bplane-stat">
                             <span class="bplane-label">Miss (&xi;,&zeta;)</span>
                             <span class="bplane-value" id="bplane-miss">-- , -- km</span>
-                            <span class="bplane-desc">Predicted relative position at TCA</span>
                         </div>
                         <div class="bplane-stat">
                             <span class="bplane-label">3&sigma; ellipse</span>
                             <span class="bplane-value" id="bplane-ellipse">-- &times; -- km</span>
-                            <span class="bplane-desc">99.7% position uncertainty region</span>
                         </div>
                         <div class="bplane-stat">
                             <span class="bplane-label">Combined HBR</span>
                             <span class="bplane-value" id="bplane-hbr">-- m</span>
-                            <span class="bplane-desc">Combined physical collision radius</span>
                         </div>
                         <div class="bplane-stat">
                             <span class="bplane-label">P<sub>c</sub> estimate</span>
                             <span class="bplane-value" id="bplane-pc">--</span>
-                            <span class="bplane-desc">Probability of collision</span>
                         </div>
-                    </div>
-                    <div class="bplane-hint" id="bplane-hint">
-                        The encounter-plane geometry conjunction assessment is built on: hard-body-radius circle, covariance ellipse, and miss-distance vector, updating live as the avoidance burn executes.
                     </div>
                 </div>
 
@@ -161,63 +175,21 @@
                         </div>
                         <div class="catastrophic-labels">
                             <span>0 J/g</span>
-                            <span class="catastrophic-threshold-label">40 J/g &mdash; CATASTROPHIC LINE</span>
+                            <span class="catastrophic-threshold-label">40 J/g &mdash; CATASTROPHIC</span>
                         </div>
                         <div class="catastrophic-value-row">
-                            <span class="catastrophic-value-label">Encounter specific energy (E<sub>MR</sub>)</span>
+                            <span class="catastrophic-value-label">E<sub>MR</sub></span>
                             <span class="catastrophic-value" id="catastrophic-value">-- J/g</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Constellation (compact row) -->
-                <div class="panel-section compact">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128752;</span>
-                        Constellation
-                    </h3>
-                    <div class="constellation-stats compact-stats">
-                        <div class="const-stat" data-type="COMSAT">
-                            <span class="const-icon comsat"></span>
-                            <span class="const-label">COMSAT</span>
-                            <span class="const-value" id="c-comsat">--</span>
-                        </div>
-                        <div class="const-stat" data-type="EOS">
-                            <span class="const-icon eos"></span>
-                            <span class="const-label">EOS</span>
-                            <span class="const-value" id="c-eos">--</span>
-                        </div>
-                        <div class="const-stat" data-type="CUBE">
-                            <span class="const-icon cube"></span>
-                            <span class="const-label">Cube</span>
-                            <span class="const-value" id="c-cube">--</span>
-                        </div>
-                        <div class="const-stat" data-type="DEBRIS">
-                            <span class="const-icon debris"></span>
-                            <span class="const-label">Debris</span>
-                            <span class="const-value" id="c-debris">--</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Active Conjunctions -->
-                <div class="panel-section flex-grow">
-                    <h3 class="section-title">
-                        <span class="title-icon">&#128752;</span>
-                        Active Conjunctions
-                        <span class="sim-status-badge idle" id="conjunctions-badge">IDLE</span>
-                    </h3>
-                    <div class="conjunction-list" id="conjunction-list"></div>
-                </div>
-
-
             </aside>
 
-            <!-- Center Column: Viewport + Bottom Section -->
+            <!-- Center Column: 3D Viewport -->
             <div class="center-column">
-            <!-- 3D Viewport -->
             <main class="viewport-container">
-                <!-- View mode label with toggle (top-right) -->
+                <!-- View mode toggle -->
                 <div class="viewport-view-label" id="view-mode-label">
                     <span id="view-mode-text">Geographic View</span>
                     <div class="view-mode-toggle" id="view-mode-toggle">
@@ -230,30 +202,6 @@
                 <!-- Three.js / Plotly Viewport -->
                 <div id="three-viewport"></div>
                 <div id="plotly-viewport" class="hidden"></div>
-
-                <!-- Hero Telemetry HUD (always visible, primary readout tied to 3D view) -->
-                <div id="sim-hud">
-                    <div class="hud-row">
-                        <span class="hud-label">SEPARATION</span>
-                        <span class="hud-value" id="hud-distance">-- km</span>
-                    </div>
-                    <div class="hud-row">
-                        <span class="hud-label">MISS DIST.</span>
-                        <span class="hud-value" id="hud-miss-distance">-- km</span>
-                    </div>
-                    <div class="hud-row">
-                        <span class="hud-label">V_REL</span>
-                        <span class="hud-value" id="hud-velocity">-- km/s</span>
-                    </div>
-                    <div class="hud-row">
-                        <span class="hud-label">TIME TO TCA</span>
-                        <span class="hud-value" id="hud-tca">--</span>
-                    </div>
-                    <div class="hud-row">
-                        <span class="hud-label">PROXIMITY</span>
-                        <span class="hud-value" id="hud-proximity">--</span>
-                    </div>
-                </div>
 
                 <!-- Viewport Controls -->
                 <div class="viewport-controls">
@@ -304,20 +252,17 @@
                     </div>
                 </div>
             </main>
-
-                <!-- Bottom spacer (decision engine moved to right panel) -->
-            <div class="bottom-middle-section" style="display:none;"></div>
             </div>
 
             <!-- Right Panel: Tabbed Interface -->
             <aside class="panel panel-right panel-right-hero">
                 <!-- Tab Bar -->
                 <div class="rp-tab-bar">
-                    <button class="rp-tab active" data-tab="decision" id="rp-tab-decision">
-                        <span class="rp-tab-icon">&#129504;</span> Decision
-                    </button>
-                    <button class="rp-tab" data-tab="simulation" id="rp-tab-simulation">
+                    <button class="rp-tab active" data-tab="simulation" id="rp-tab-simulation">
                         <span class="rp-tab-icon">&#127916;</span> Simulation
+                    </button>
+                    <button class="rp-tab" data-tab="decision" id="rp-tab-decision">
+                        <span class="rp-tab-icon">&#129504;</span> Decision
                     </button>
                     <button class="rp-tab" data-tab="events" id="rp-tab-events">
                         <span class="rp-tab-icon">&#128225;</span> Events
@@ -325,7 +270,7 @@
                 </div>
 
                 <!-- Tab Content: Decision Engine -->
-                <div class="rp-tab-content active" id="rp-content-decision">
+                <div class="rp-tab-content" id="rp-content-decision">
                 <div class="panel-section de-hero-section">
                     <h3 class="de-hero-title">
                         <span class="de-hero-icon">&#129504;</span>
@@ -383,7 +328,7 @@
                 </div>
 
                 <!-- Tab Content: Simulation -->
-                <div class="rp-tab-content" id="rp-content-simulation">
+                <div class="rp-tab-content active" id="rp-content-simulation">
                 <div class="panel-section sim-panel">
                     <div class="sim-scenario-name" id="sim-scenario-name">Select a scenario</div>
 
