@@ -22,7 +22,7 @@ from .utils import (
     state_to_coe, get_logger
 )
 from .orbital_mechanics import (
-    propagate_state, generate_ephemeris, propagate_with_stm
+    propagate_state, generate_ephemeris, generate_ephemeris_kepler, propagate_with_stm
 )
 
 logger = get_logger(__name__)
@@ -149,13 +149,15 @@ def screen_conjunctions(spacecraft_list: List[Spacecraft],
 
     for sc in spacecraft_list:
         try:
-            eph = generate_ephemeris(
-                sc.state, times,
-                cd=sc.cd, cr=sc.cr,
-                area_mass_ratio=sc.area / sc.mass
-            )
+            # Fast analytical two-body propagation for the coarse geometric
+            # filter (see docs/physics.md "Coarse Screening Propagation").
+            # Perturbations are omitted here on purpose — they're negligible
+            # next to the km-scale distance_threshold below, and flagged
+            # pairs still get fully perturbed propagation in find_tca() /
+            # assess_conjunction() before any Pc is computed.
+            eph = generate_ephemeris_kepler(sc.state, times)
             ephemerides.append(eph)
-        except RuntimeError:
+        except (RuntimeError, ValueError):
             # Propagation failed — skip this object
             ephemerides.append(None)
 

@@ -74,9 +74,14 @@ def healthz():
 
 @app.route('/')
 def index():
-    if _sim_ready.is_set() and _real_app:
-        return send_from_directory('dashboard', 'landing.html')
-    return _LOADING_HTML, 200
+    # landing.html is a static, client-rendered page that doesn't need the
+    # simulation to be loaded (it only links to index.html for the actual
+    # dashboard), so serve it unconditionally instead of gating it behind
+    # _sim_ready. Gating it here was the bug: /landing.html worked because
+    # Flask's built-in static route serves it directly, but / used this
+    # readiness check and got stuck showing the loading placeholder forever
+    # if the background simulation thread hung.
+    return send_from_directory('dashboard', 'landing.html')
 
 
 @app.route('/api/<path:path>', methods=['GET', 'POST'])

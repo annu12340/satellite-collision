@@ -132,6 +132,31 @@ miss_distance = |r₁(t*) - r₂(t*)|
 
 Typical screening threshold: < 5 km (triggers detailed analysis).
 
+### Coarse Screening Propagation
+
+The initial all-vs-all geometric filter (`screen_conjunctions()` /
+`generate_ephemeris_kepler()`) only needs to rule out pairs that are
+obviously never close, not a precise Pc. It therefore propagates the
+unperturbed two-body solution analytically via Kepler's equation
+(Section 1) instead of numerically integrating J2/drag/SRP:
+
+```
+r(t), v(t) = Kepler_propagate(COE(t=0), t)   [no perturbations]
+```
+
+This is exact for the two-body problem (specific orbital energy
+ε = v²/2 - μ/r is conserved identically, not just to integration
+tolerance) and ~2 orders of magnitude faster than full perturbed
+integration, since it has no adaptive-step ODE solver overhead.
+Perturbation-induced position error over a single day at LEO altitudes
+(~10 km from J2, ~500 m from drag — see Section 2 error budget) is
+negligible next to the 5-25 km screening threshold used here.
+
+Once a pair is flagged, `find_tca()` and `assess_conjunction()` still use
+the fully perturbed `propagate_state()` for TCA refinement and the actual
+Pc calculation — this fast path affects only which pairs get a detailed
+look, never the accuracy of the detailed look itself.
+
 ### Probability of Collision (Pc)
 
 The core metric. Uses the **combined covariance** of both objects.

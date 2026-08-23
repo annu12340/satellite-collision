@@ -674,6 +674,48 @@ def propagate_covariance(covariance: np.ndarray, stm: np.ndarray,
 # ============================================================================
 
 
+def generate_ephemeris_kepler(state: StateVector, times: np.ndarray) -> np.ndarray:
+    """
+    Fast analytical (two-body, unperturbed) ephemeris for coarse screening.
+
+    Uses the closed-form Kepler propagator (propagate_kepler / solve_kepler)
+    instead of numerically integrating J2/drag/SRP — see docs/physics.md
+    Section 3 "Coarse Screening Propagation". This is ~2 orders of
+    magnitude faster than generate_ephemeris() and is intended only for
+    the geometric pre-filter in screen_conjunctions(); it decides which
+    pairs are *candidates* for detailed assessment, not the final Pc/TCA,
+    which still goes through the fully perturbed propagate_state() /
+    find_tca() / assess_conjunction() pipeline.
+
+    Two-body motion exactly conserves specific orbital energy
+    epsilon = v^2/2 - mu/r (docs/physics.md Section 1), so this coarse
+    pass introduces no energy-conservation violation; it simply omits
+    perturbations that are negligible relative to the 5-25 km
+    distance-threshold filter used for screening.
+
+    Parameters
+    ----------
+    state : StateVector
+        Initial state at t=0, ECI frame, km / km/s
+    times : ndarray
+        Array of output times [seconds]
+
+    Returns
+    -------
+    ndarray (N, 6)
+        State vectors [x, y, z, vx, vy, vz] (km, km/s, ECI) at each
+        requested time
+    """
+    coe0 = state_to_coe(state)
+    out = np.empty((len(times), 6))
+    for idx, t in enumerate(times):
+        coe_t = propagate_kepler(coe0, float(t))
+        st_t = coe_to_state(coe_t)
+        out[idx, :3] = st_t.r
+        out[idx, 3:] = st_t.v
+    return out
+
+
 def generate_ephemeris(state: StateVector, times: np.ndarray,
                       cd: float = 2.2, cr: float = 1.5,
                       area_mass_ratio: float = 0.01,

@@ -1,5 +1,23 @@
 # AI Satellite Collision Prevention System
 
+## Index
+
+- [The Day the Sky Broke](#the-day-the-sky-broke)
+- [What This System Does](#what-this-system-does)
+- [How It Works: The Full Story](#how-it-works-the-full-story)
+- [The Architecture](#the-architecture)
+- [The Uncertainty Problem](#the-uncertainty-problem)
+- [The Dashboard](#the-dashboard)
+- [API Reference](#api-reference)
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [Performance](#performance)
+- [Technology Stack](#technology-stack)
+- [Why This Matters](#why-this-matters)
+- [Built With Kiro](#built-with-kiro)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## The Day the Sky Broke
 
 On February 10, 2009, at 16:56 UTC, something happened 790 kilometers above northern Siberia that changed space operations forever. Iridium 33 — a functioning communications satellite — slammed into Cosmos 2251, a defunct Russian military satellite, at a relative velocity of 11.7 km/s. That's roughly 26,000 miles per hour. The collision lasted milliseconds, but its consequences will persist for centuries.
@@ -556,6 +574,14 @@ Operators need to see the situation, understand the recommendations, and trust t
 | Architecture | `/architecture.html` | System design for developers |
 | Docs | `/docs.html` | Interactive physics reference |
 
+### Screenshots
+
+| | |
+|---|---|
+| ![Dashboard overview](docs/images/Screenshot.png) | ![Dashboard detail](docs/images/Screenshot2.png) |
+| ![3D orbital visualization](orbits_3d.png) | ![Risk timeline](risk_timeline.png) |
+| ![Risk evolution projection](risk_evolution.png) | ![Debris breakup analysis](debris_analysis.png) |
+
 Real-time updates flow through Server-Sent Events:
 
 ```
@@ -743,6 +769,79 @@ The Iridium-Cosmos collision happened when there were fewer than 1,000 active sa
 We built this system because the alternative — waiting for the next Iridium-Cosmos and hoping it doesn't start a cascade — is not a strategy. It's a gamble with infrastructure that modern civilization depends on: GPS navigation, weather forecasting, communications, climate monitoring, disaster response.
 
 Space is getting crowded. This system is designed to keep it usable.
+
+---
+
+## Built With Kiro
+
+This project was built inside [Kiro](https://kiro.dev), and it leans on Kiro's spec, steering, and hook systems rather than just using it as a chat-based code generator. Here's how each piece is actually wired up in `.kiro/`.
+
+### Specs — structured feature development
+
+Every non-trivial feature in this codebase went through Kiro's spec workflow (`.kiro/specs/`) instead of an ad-hoc prompt-and-hope loop. Each spec folder carries three files — `requirements.md`, `design.md`, `tasks.md` — so a feature is fully scoped and designed before any implementation task starts:
+
+```
+.kiro/specs/
+├── orbital-mechanics/              # Core propagation, STM, perturbations
+├── conjunction-assessment/          # Screening, Pc calculation, TCA
+├── avoidance-maneuver-planning/     # Delta-v optimization
+├── simulation-engine/               # Main event loop orchestration
+├── cuopt-fuel-allocation/           # GPU MILP fuel budget optimization
+├── cuopt-intervention-planning/     # GPU MILP maneuver sequencing
+├── live-bplane-encounter-geometry/  # Real-time B-plane visualization
+├── mark-tca-zone-3d-visualization/  # 3D TCA marker rendering
+└── catastrophic-threshold-gauge/    # Risk threshold UI component
+```
+
+This matters a lot for a physics-heavy codebase: the `design.md` for something like `cuopt-fuel-allocation` documents the MILP formulation and constraint set *before* a line of `cuopt_client.py` gets touched, and `tasks.md` breaks that design into checkable implementation steps that Kiro executes and tracks one at a time.
+
+### Steering — always-on project context
+
+Six steering docs in `.kiro/steering/` are injected into every session automatically, so Kiro never has to rediscover the architecture from scratch:
+
+| File | What it encodes |
+|---|---|
+| `project-context.md` | Module map, data structures (spacecraft state, conjunction event, maneuver plan), API contract |
+| `project-roadmap.md` | Phase plan, success metrics, risk register |
+| `architecture-deep-dive.md` | Layered design principles, data flow diagrams, decision algorithm hierarchy |
+| `technical-stack.md` | Dependency rationale, performance characteristics, complexity tables |
+| `development-practices.md` | Module dependency graph, code review checklist for physics vs. API changes |
+| `physics-change-guard.md` | Hard constraints for anything touching orbital mechanics |
+
+Because these are steering files (not one-off chat context), they stay consistent across every session and every contributor using Kiro on this repo, instead of each person re-explaining the architecture in their own words.
+
+### Hooks — the automation layer
+
+This is the part worth calling out in detail. `.kiro/hooks/` has 9 hook definitions, each a JSON file Kiro reads and executes directly with no manual triggering required. They cover several different concerns:
+
+**1. Session context injection (`SessionStart`)**
+- `project-context-injection.json` and `development-practices-injection.json` fire the moment a new Kiro session opens and inject the architecture map and coding conventions straight into context via an `agent` action. This is what makes the steering docs above actually *active* rather than just reference material sitting in a folder — every session starts already knowing the module dependency graph, coordinate conventions, and debugging playbooks.
+
+**2. Code quality automation (`PostFileSave` / `PostFileCreate`)**
+- `lint-on-save.json` — matches `\.py$`, runs `ruff check --fix` on every Python file the moment it's saved.
+- `format-on-create.json` — matches `\.py$`, runs `ruff format` on brand new Python files right after creation, so nothing lands unformatted.
+- `dependency-check.json` — matches `requirements\.txt$`, runs `pip check` whenever the requirements file changes, catching dependency conflicts (e.g. NumPy/SciPy version clashes) immediately instead of at install time.
+
+**3. Physics safety gate (`PreToolUse`)** — the most interesting one
+- `physics-safety-gate.json` matches on the tool name (`fs_write|str_replace`) and fires *before* any write tool runs. Its `agent` action instructs Kiro to check whether the target is a physics-critical file (`orbital_mechanics.py`, `conjunction.py`, `damage_minimization.py`) and, if so, enforce five rules before the write is allowed through:
+  1. **Coordinate convention** — position vectors must stay in ECI; any other frame (RTN, LVLH, perifocal) requires an explicit conversion back at the function boundary.
+  2. **Unit consistency** — no mixing SI and km-based units within a function; new constants must cite units and source.
+  3. **Covariance integrity** — any covariance matrix construction/modification must preserve symmetry and positive semi-definiteness, with eigenvalues clamped to ≥1e-10.
+  4. **Formula provenance** — new or modified physics formulas need a comment citing `docs/physics.md`, a publication, or a named standard (e.g. NASA Standard Breakup Model).
+  5. **Conservation laws** — propagation changes can't silently break energy conservation in the unperturbed two-body case.
+  
+  If a proposed edit to one of those files would violate a rule, the hook returns a `permissionDecision: "ask"`, which pauses the write and surfaces the concern to the user for explicit approval rather than silently applying a physics-breaking change. Edits to unrelated files (docs, dashboard, README) pass through untouched.
+
+**4. Post-task validation (`PostTaskExec`)**
+- `post-task-validation.json` fires after any spec task is marked complete. It imports the five core modules (`orbital_mechanics`, `conjunction`, `avoidance`, `damage_minimization`, `risk_optimizer`) in sequence and prints a pass/fail per module. This catches broken imports, circular dependencies, or syntax errors from an implementation task before moving to the next one — a cheap regression check that runs automatically instead of relying on someone remembering to do it.
+
+**5. Custom strategy integration (`PostFileCreate`)**
+- `strategy-auto-integrator.json` matches `src/strategies/custom_.*\.py$` — the moment a new file matching that pattern is created (see `custom_fuel_efficiency.py`, `custom_relative_velocity.py`), it runs `src/strategy_integrator.py` against the new file to validate and register the strategy automatically, instead of requiring a manual wiring step.
+
+**6. Git workflow (`Stop`)**
+- `smart-git-commit.json` fires when a session ends. Instead of auto-committing, its `agent` action reviews `git status`/`git diff`, drafts a single-line conventional-commit message, and explicitly asks the user for approval before staging and committing anything. Nothing gets committed without a human sign-off.
+
+Together, these hooks mean the physics-safety review, linting, dependency checks, and post-implementation validation happen automatically as a side effect of normal editing — not as separate manual steps someone has to remember to run.
 
 ---
 
