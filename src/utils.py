@@ -96,6 +96,21 @@ class Spacecraft:
     maneuverable: bool = True
     name: str = ""
 
+    def __post_init__(self):
+        """Validate spacecraft properties on creation."""
+        if self.mass <= 0:
+            raise ValueError(f"Spacecraft mass must be positive, got {self.mass}")
+        if self.area < 0:
+            raise ValueError(f"Spacecraft area must be non-negative, got {self.area}")
+        if self.delta_v_budget < 0:
+            raise ValueError(f"delta_v_budget must be non-negative, got {self.delta_v_budget}")
+        if self.delta_v_used < 0:
+            raise ValueError(f"delta_v_used must be non-negative, got {self.delta_v_used}")
+        if self.covariance.shape != (6, 6):
+            raise ValueError(
+                f"Covariance must be 6x6 matrix, got shape {self.covariance.shape}"
+            )
+
 
 @dataclass
 class Conjunction:

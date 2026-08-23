@@ -981,6 +981,30 @@ def serve_architecture():
     return send_from_directory(app.static_folder, 'architecture.html')
 
 
+@app.route('/science.html')
+def serve_science():
+    """Serve the science explainer page."""
+    return send_from_directory(app.static_folder, 'science.html')
+
+
+@app.route('/maneuver-viz.html')
+def serve_maneuver_viz():
+    """Serve the maneuver visualization page."""
+    return send_from_directory(app.static_folder, 'maneuver-viz.html')
+
+
+@app.route('/docs.html')
+def serve_docs():
+    """Serve the physics documentation page."""
+    return send_from_directory(app.static_folder, 'docs.html')
+
+
+@app.route('/viz.html')
+def serve_viz():
+    """Serve the 3D orbital visualization page."""
+    return send_from_directory(app.static_folder, 'viz.html')
+
+
 @app.route('/api/spacecraft')
 def get_spacecraft():
     """All spacecraft with orbital data and paths."""

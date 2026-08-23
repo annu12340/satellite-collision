@@ -21,8 +21,8 @@ from typing import List, Tuple, Optional
 
 from .utils import (
     MU_EARTH, R_EARTH, CATASTROPHIC_ENERGY,
-    StateVector, Spacecraft, Conjunction, Maneuver,
-    state_to_coe, eci_to_rtn, orbital_period
+    StateVector, Spacecraft, Conjunction,
+    state_to_coe, orbital_period
 )
 from .orbital_mechanics import propagate_state
 

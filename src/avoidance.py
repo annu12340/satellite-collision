@@ -25,8 +25,10 @@ from typing import List, Tuple, Optional, Dict, Callable
 from .utils import (
     MU_EARTH, R_EARTH,
     StateVector, Spacecraft, Conjunction, Maneuver,
-    eci_to_rtn, state_to_coe
+    eci_to_rtn, state_to_coe, get_logger
 )
+
+logger = get_logger(__name__)
 from .orbital_mechanics import (
     propagate_state, propagate_with_stm, propagate_covariance
 )
@@ -108,7 +110,7 @@ def apply_custom_strategies(conjunction: Conjunction,
         try:
             results[name] = func(conjunction, spacecraft_list)
         except Exception as e:
-            print(f"Warning: Custom strategy '{name}' failed: {e}")
+            logger.warning("Custom strategy '%s' failed: %s", name, e)
             results[name] = None
     
     return results

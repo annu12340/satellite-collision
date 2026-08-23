@@ -12,18 +12,20 @@ Implements:
 """
 
 import numpy as np
-from scipy.optimize import brentq, minimize_scalar
+from scipy.optimize import minimize_scalar
 from scipy.special import factorial
 from typing import List, Tuple, Optional
 
 from .utils import (
     MU_EARTH, R_EARTH,
-    StateVector, Spacecraft, Conjunction, OrbitalElements,
-    state_to_coe, eci_to_rtn
+    StateVector, Spacecraft, Conjunction,
+    state_to_coe, get_logger
 )
 from .orbital_mechanics import (
     propagate_state, generate_ephemeris, propagate_with_stm
 )
+
+logger = get_logger(__name__)
 
 
 # ============================================================================
@@ -462,7 +464,18 @@ def project_covariance_to_encounter_plane(
     -------
     ndarray (2, 2)
         Combined covariance in the encounter plane
+
+    Raises
+    ------
+    ValueError
+        If covariance matrices have wrong shapes
     """
+    if cov1.shape != (6, 6):
+        raise ValueError(f"cov1 must be 6x6, got shape {cov1.shape}")
+    if cov2.shape != (6, 6):
+        raise ValueError(f"cov2 must be 6x6, got shape {cov2.shape}")
+    if projection_matrix.shape != (2, 3):
+        raise ValueError(f"projection_matrix must be (2,3), got {projection_matrix.shape}")
     # Extract position covariances (upper-left 3x3 blocks)
     pos_cov1 = cov1[:3, :3]
     pos_cov2 = cov2[:3, :3]
@@ -508,7 +521,18 @@ def probability_of_collision_2d(miss_vector: np.ndarray,
     -------
     float
         Probability of collision (0 to 1)
+
+    Raises
+    ------
+    ValueError
+        If inputs have wrong shapes or combined_radius is negative
     """
+    if miss_vector.shape != (2,):
+        raise ValueError(f"miss_vector must have shape (2,), got {miss_vector.shape}")
+    if covariance_2d.shape != (2, 2):
+        raise ValueError(f"covariance_2d must have shape (2,2), got {covariance_2d.shape}")
+    if combined_radius <= 0:
+        raise ValueError(f"combined_radius must be positive, got {combined_radius}")
     # Eigendecomposition of covariance
     eigenvalues, eigenvectors = np.linalg.eigh(covariance_2d)
 

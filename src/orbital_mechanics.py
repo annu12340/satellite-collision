@@ -18,8 +18,65 @@ from typing import Optional, Tuple
 from .utils import (
     MU_EARTH, R_EARTH, J2, OMEGA_EARTH, P_SOLAR,
     StateVector, OrbitalElements, Spacecraft,
-    coe_to_state, state_to_coe, orbital_period
+    coe_to_state, state_to_coe, orbital_period, get_logger
 )
+
+logger = get_logger(__name__)
+
+
+# ============================================================================
+# INPUT VALIDATION
+# ============================================================================
+
+
+def _validate_state_vector(state: StateVector, context: str = "") -> None:
+    """
+    Validate a state vector for physical consistency.
+
+    Checks:
+    - Finite values (no NaN/Inf)
+    - Position above Earth surface
+    - Velocity below escape velocity
+
+    Parameters
+    ----------
+    state : StateVector
+        State to validate
+    context : str
+        Caller context for error messages
+
+    Raises
+    ------
+    ValueError
+        If state is physically invalid
+    """
+    prefix = f"[{context}] " if context else ""
+
+    if not np.all(np.isfinite(state.r)):
+        raise ValueError(f"{prefix}Non-finite position vector: {state.r}")
+    if not np.all(np.isfinite(state.v)):
+        raise ValueError(f"{prefix}Non-finite velocity vector: {state.v}")
+
+    r_mag = np.linalg.norm(state.r)
+    if r_mag < R_EARTH * 0.9:
+        raise ValueError(
+            f"{prefix}Position below Earth surface: |r|={r_mag:.1f} km < R_earth={R_EARTH:.1f} km"
+        )
+
+    v_mag = np.linalg.norm(state.v)
+    v_escape = np.sqrt(2 * MU_EARTH / r_mag)
+    if v_mag > v_escape * 1.5:
+        logger.warning("%sVelocity %.2f km/s exceeds 1.5x escape velocity (%.2f km/s)",
+                       prefix, v_mag, v_escape)
+
+
+def _validate_eccentricity(e: float, context: str = "") -> None:
+    """Validate eccentricity is in a physical range for bound orbits."""
+    prefix = f"[{context}] " if context else ""
+    if e < 0:
+        raise ValueError(f"{prefix}Eccentricity cannot be negative: e={e}")
+    if e >= 1.0:
+        raise ValueError(f"{prefix}Eccentricity >= 1.0 (hyperbolic/parabolic): e={e}")
 
 
 # ============================================================================
@@ -96,8 +153,17 @@ def propagate_kepler(elements: OrbitalElements, dt: float) -> OrbitalElements:
     -------
     OrbitalElements
         Propagated elements (only true anomaly changes)
+
+    Raises
+    ------
+    ValueError
+        If eccentricity is not in [0, 1) range for bound orbits
     """
     a, e = elements.a, elements.e
+
+    _validate_eccentricity(e, context="propagate_kepler")
+    if a <= 0:
+        raise ValueError(f"Semi-major axis must be positive, got a={a} km")
 
     # Mean motion
     n = np.sqrt(MU_EARTH / a**3)
@@ -464,7 +530,19 @@ def propagate_state(state: StateVector, dt: float,
     -------
     StateVector
         Propagated state
+
+    Raises
+    ------
+    ValueError
+        If input state is physically invalid
+    RuntimeError
+        If numerical integration fails to converge
     """
+    _validate_state_vector(state, context="propagate_state")
+
+    if area_mass_ratio < 0:
+        raise ValueError(f"area_mass_ratio must be non-negative, got {area_mass_ratio}")
+
     y0 = np.concatenate([state.r, state.v])
 
     sol = solve_ivp(
@@ -513,7 +591,15 @@ def propagate_with_stm(state: StateVector, dt: float,
         Propagated state
     np.ndarray (6, 6)
         State Transition Matrix Φ(t₀+dt, t₀)
+
+    Raises
+    ------
+    ValueError
+        If input state is physically invalid
+    RuntimeError
+        If numerical integration fails
     """
+    _validate_state_vector(state, context="propagate_with_stm")
     # Initial conditions: state + identity STM
     y0 = np.concatenate([
         state.r, state.v,
@@ -561,7 +647,20 @@ def propagate_covariance(covariance: np.ndarray, stm: np.ndarray,
     -------
     ndarray (6, 6)
         Propagated covariance
+
+    Raises
+    ------
+    ValueError
+        If covariance matrix has wrong shape or is not symmetric
     """
+    if covariance.shape != (6, 6):
+        raise ValueError(f"Covariance must be 6x6, got shape {covariance.shape}")
+    if stm.shape != (6, 6):
+        raise ValueError(f"STM must be 6x6, got shape {stm.shape}")
+    if not np.allclose(covariance, covariance.T, atol=1e-10):
+        logger.warning("Covariance matrix is not symmetric; symmetrizing.")
+        covariance = (covariance + covariance.T) / 2.0
+
     P_new = stm @ covariance @ stm.T
 
     if process_noise is not None:

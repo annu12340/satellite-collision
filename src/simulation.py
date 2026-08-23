@@ -16,8 +16,7 @@ matplotlib.use('Agg')  # Headless backend - safe to call from Flask/background t
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
-from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 — registers 3D projection
 from typing import List, Optional
 import time
 import warnings
@@ -27,7 +26,7 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 from .utils import (
     MU_EARTH, R_EARTH, CATASTROPHIC_ENERGY,
     StateVector, Spacecraft, Conjunction, Maneuver, OrbitalElements,
-    coe_to_state, state_to_coe, orbital_period, circular_velocity,
+    coe_to_state, state_to_coe, orbital_period,
     get_logger
 )
 
@@ -299,12 +298,13 @@ class CollisionPreventionSimulation:
 
         Screens all pairs for potential close approaches.
         """
-        print(f"\n{'='*70}")
-        print("  PHASE 1: CONJUNCTION SCREENING")
-        print(f"{'='*70}")
-        print(f"  Screening window: {time_window_hours:.0f} hours")
-        print(f"  Distance threshold: {distance_threshold_km:.0f} km")
-        print(f"  Pairs to check: {len(self.spacecraft_list) * (len(self.spacecraft_list)-1) // 2}")
+        logger.info("=" * 70)
+        logger.info("  PHASE 1: CONJUNCTION SCREENING")
+        logger.info("=" * 70)
+        logger.info("  Screening window: %.0f hours", time_window_hours)
+        logger.info("  Distance threshold: %.0f km", distance_threshold_km)
+        n_pairs = len(self.spacecraft_list) * (len(self.spacecraft_list) - 1) // 2
+        logger.info("  Pairs to check: %d", n_pairs)
 
         t_start = time.time()
 
@@ -315,31 +315,31 @@ class CollisionPreventionSimulation:
         )
 
         elapsed = time.time() - t_start
-        print(f"  Screening completed in {elapsed:.2f}s")
-        print(f"\n  Results:")
-        print(f"    Conjunctions found: {len(self.conjunctions)}")
+        logger.info("  Screening completed in %.2fs", elapsed)
+        logger.info("  Conjunctions found: %d", len(self.conjunctions))
 
         if self.conjunctions:
             pcs = [c.probability_of_collision for c in self.conjunctions]
-            print(f"    Highest Pc: {max(pcs):.2e}")
-            print(f"    Mean Pc: {np.mean(pcs):.2e}")
+            logger.info("    Highest Pc: %.2e", max(pcs))
+            logger.info("    Mean Pc: %.2e", np.mean(pcs))
 
             # Categorize by risk level
             high = sum(1 for p in pcs if p >= 1e-4)
             medium = sum(1 for p in pcs if 1e-5 <= p < 1e-4)
             low = sum(1 for p in pcs if p < 1e-5)
-            print(f"    High risk (Pc >= 1e-4): {high}")
-            print(f"    Medium risk (1e-5 <= Pc < 1e-4): {medium}")
-            print(f"    Low risk (Pc < 1e-5): {low}")
+            logger.info("    High risk (Pc >= 1e-4): %d", high)
+            logger.info("    Medium risk (1e-5 <= Pc < 1e-4): %d", medium)
+            logger.info("    Low risk (Pc < 1e-5): %d", low)
 
             # Print top conjunctions
-            print(f"\n    Top 5 conjunctions:")
+            logger.info("  Top 5 conjunctions:")
             for i, conj in enumerate(self.conjunctions[:5]):
-                print(f"      {i+1}. {conj.obj1_id} ↔ {conj.obj2_id}")
-                print(f"         Pc={conj.probability_of_collision:.2e}, "
-                      f"miss={conj.miss_distance:.3f} km, "
-                      f"v_rel={conj.relative_velocity:.2f} km/s, "
-                      f"TCA={conj.tca/3600:.1f}h")
+                logger.info("    %d. %s <-> %s | Pc=%.2e, miss=%.3f km, "
+                            "v_rel=%.2f km/s, TCA=%.1fh",
+                            i + 1, conj.obj1_id, conj.obj2_id,
+                            conj.probability_of_collision,
+                            conj.miss_distance, conj.relative_velocity,
+                            conj.tca / 3600)
 
     def plan_avoidance(self):
         """
@@ -347,32 +347,31 @@ class CollisionPreventionSimulation:
 
         Plans maneuvers for all actionable conjunctions.
         """
-        print(f"\n{'='*70}")
-        print("  PHASE 2: COLLISION AVOIDANCE PLANNING")
-        print(f"{'='*70}")
+        logger.info("=" * 70)
+        logger.info("  PHASE 2: COLLISION AVOIDANCE PLANNING")
+        logger.info("=" * 70)
 
         if not self.conjunctions:
-            print("  No conjunctions to address.")
+            logger.info("  No conjunctions to address.")
             return
 
         self.planned_maneuvers = plan_avoidance_campaign(
             self.spacecraft_list, self.conjunctions
         )
 
-        print(f"\n  Maneuvers planned: {len(self.planned_maneuvers)}")
+        logger.info("  Maneuvers planned: %d", len(self.planned_maneuvers))
 
         if self.planned_maneuvers:
             total_dv = sum(m.fuel_cost for m in self.planned_maneuvers)
-            print(f"  Total Δv cost: {total_dv:.2f} m/s")
-            print(f"  Average Δv per maneuver: {total_dv/len(self.planned_maneuvers):.2f} m/s")
+            logger.info("  Total dv cost: %.2f m/s", total_dv)
+            logger.info("  Average dv per maneuver: %.2f m/s",
+                        total_dv / len(self.planned_maneuvers))
 
-            print(f"\n  Planned maneuvers:")
             for i, man in enumerate(self.planned_maneuvers[:10]):
-                dv_rtn = man.delta_v * 1000  # km/s → m/s
-                print(f"    {i+1}. SC: {man.spacecraft_id}")
-                print(f"       Time: T+{man.time/3600:.1f}h")
-                print(f"       Δv (RTN): [{dv_rtn[0]:.2f}, {dv_rtn[1]:.2f}, {dv_rtn[2]:.2f}] m/s")
-                print(f"       |Δv|: {man.fuel_cost:.2f} m/s")
+                dv_rtn = man.delta_v * 1000  # km/s -> m/s
+                logger.info("    %d. SC=%s, T+%.1fh, dv=[%.2f, %.2f, %.2f] m/s (|dv|=%.2f)",
+                            i + 1, man.spacecraft_id, man.time / 3600,
+                            dv_rtn[0], dv_rtn[1], dv_rtn[2], man.fuel_cost)
 
     def assess_unavoidable(self):
         """
@@ -381,9 +380,9 @@ class CollisionPreventionSimulation:
         For conjunctions where avoidance is impossible (no fuel, no time,
         non-maneuverable objects).
         """
-        print(f"\n{'='*70}")
-        print("  PHASE 3: UNAVOIDABLE COLLISION ASSESSMENT")
-        print(f"{'='*70}")
+        logger.info("=" * 70)
+        logger.info("  PHASE 3: UNAVOIDABLE COLLISION ASSESSMENT")
+        logger.info("=" * 70)
 
         # Find conjunctions that couldn't be resolved
         resolved_ids = set()
@@ -402,16 +401,17 @@ class CollisionPreventionSimulation:
                 if sc1 and sc2 and conj.probability_of_collision > 1e-5:
                     unavoidable.append((conj, sc1, sc2))
 
-        print(f"\n  Unavoidable high-risk conjunctions: {len(unavoidable)}")
+        logger.info("  Unavoidable high-risk conjunctions: %d", len(unavoidable))
 
         if not unavoidable:
-            print("  All significant risks have been addressed!")
+            logger.info("  All significant risks have been addressed!")
             return
 
         for i, (conj, sc1, sc2) in enumerate(unavoidable[:3]):
-            print(f"\n  --- Collision Scenario {i+1} ---")
-            print(f"  Objects: {sc1.name} ({sc1.mass:.0f}kg) ↔ {sc2.name} ({sc2.mass:.0f}kg)")
-            print(f"  Relative velocity: {conj.relative_velocity:.2f} km/s")
+            logger.info("  --- Collision Scenario %d ---", i + 1)
+            logger.info("  Objects: %s (%.0fkg) <-> %s (%.0fkg)",
+                        sc1.name, sc1.mass, sc2.name, sc2.mass)
+            logger.info("  Relative velocity: %.2f km/s", conj.relative_velocity)
 
             # Predict outcome
             try:
@@ -426,40 +426,33 @@ class CollisionPreventionSimulation:
                 N_1 = fragment_count(sc1.mass, sc2.mass, conj.relative_velocity, 0.01)
                 catastrophic = E_spec >= CATASTROPHIC_ENERGY
 
-                print(f"  Collision type: {'CATASTROPHIC' if catastrophic else 'Non-catastrophic'}")
-                print(f"  Specific energy: {E_spec:.0f} J/kg "
-                      f"(threshold: {CATASTROPHIC_ENERGY:.0f} J/kg)")
-                print(f"  Expected fragments (>10cm): {N_10}")
-                print(f"  Expected fragments (>1cm): {N_1}")
+                logger.info("  Type: %s", 'CATASTROPHIC' if catastrophic else 'Non-catastrophic')
+                logger.info("  Specific energy: %.0f J/kg (threshold: %.0f J/kg)",
+                            E_spec, CATASTROPHIC_ENERGY)
+                logger.info("  Fragments >10cm: %d, >1cm: %d", N_10, N_1)
 
                 strategies = evaluate_all_strategies(sc1, sc2, conj, time_available=1800)
-                print(f"\n  Mitigation strategies (ranked):")
                 for j, strat in enumerate(strategies):
                     score = strat.effectiveness_score * strat.feasibility_score
-                    print(f"    {j+1}. [{score:.2f}] {strat.name}")
-                    print(f"       {strat.description[:100]}")
-                    print(f"       Δv needed: {strat.required_delta_v_ms:.1f} m/s | "
-                          f"Effectiveness: {strat.effectiveness_score:.1%} | "
-                          f"Feasibility: {strat.feasibility_score:.1%}")
+                    logger.info("    %d. [%.2f] %s | dv=%.1f m/s",
+                                j + 1, score, strat.name, strat.required_delta_v_ms)
                 continue
 
-            print(f"  Collision type: {'CATASTROPHIC' if outcome.is_catastrophic else 'Non-catastrophic'}")
-            print(f"  Specific energy: {outcome.specific_energy_j_per_kg:.0f} J/kg "
-                  f"(threshold: {CATASTROPHIC_ENERGY:.0f} J/kg)")
-            print(f"  Expected fragments (>10cm): {outcome.total_fragments_gt_10cm}")
-            print(f"  Expected fragments (>1cm): {outcome.total_fragments_gt_1cm}")
-            print(f"  Mean debris lifetime: {outcome.mean_debris_lifetime_years:.1f} years")
+            logger.info("  Type: %s", 'CATASTROPHIC' if outcome.is_catastrophic else 'Non-catastrophic')
+            logger.info("  Specific energy: %.0f J/kg (threshold: %.0f J/kg)",
+                        outcome.specific_energy_j_per_kg, CATASTROPHIC_ENERGY)
+            logger.info("  Fragments >10cm: %d, >1cm: %d",
+                        outcome.total_fragments_gt_10cm, outcome.total_fragments_gt_1cm)
+            logger.info("  Mean debris lifetime: %.1f years", outcome.mean_debris_lifetime_years)
 
             # Evaluate mitigation strategies
             strategies = evaluate_all_strategies(sc1, sc2, conj, time_available=1800)
-            print(f"\n  Mitigation strategies (ranked):")
             for j, strat in enumerate(strategies):
                 score = strat.effectiveness_score * strat.feasibility_score
-                print(f"    {j+1}. [{score:.2f}] {strat.name}")
-                print(f"       {strat.description[:100]}")
-                print(f"       Δv needed: {strat.required_delta_v_ms:.1f} m/s | "
-                      f"Effectiveness: {strat.effectiveness_score:.1%} | "
-                      f"Feasibility: {strat.feasibility_score:.1%}")
+                logger.info("    %d. [%.2f] %s | dv=%.1f m/s, eff=%.1f%%, feas=%.1f%%",
+                            j + 1, score, strat.name, strat.required_delta_v_ms,
+                            strat.effectiveness_score * 100,
+                            strat.feasibility_score * 100)
 
     def run_optimizer(self, method: str = 'adaptive'):
         """
@@ -467,16 +460,16 @@ class CollisionPreventionSimulation:
 
         Runs the global optimizer to find the best intervention sequence.
         """
-        print(f"\n{'='*70}")
-        print("  PHASE 4: MULTI-OBJECT RISK OPTIMIZATION")
-        print(f"{'='*70}")
+        logger.info("=" * 70)
+        logger.info("  PHASE 4: MULTI-OBJECT RISK OPTIMIZATION")
+        logger.info("=" * 70)
 
         if not self.conjunctions:
-            print("  No conjunctions to optimize.")
+            logger.info("  No conjunctions to optimize.")
             return
 
-        print(f"  Method: {method}")
-        print(f"  Optimizing across {len(self.conjunctions)} conjunctions...")
+        logger.info("  Method: %s", method)
+        logger.info("  Optimizing across %d conjunctions...", len(self.conjunctions))
 
         t_start = time.time()
 
@@ -486,45 +479,45 @@ class CollisionPreventionSimulation:
 
         # Get initial risk state
         risk_before = optimizer.compute_risk_state()
-        print(f"\n  Initial risk state:")
-        print(f"    Total Pc: {risk_before.total_collision_probability:.2e}")
-        print(f"    Expected debris: {risk_before.total_expected_debris:.0f} fragments")
-        print(f"    Kessler index: {risk_before.kessler_risk_index:.3f}")
+        logger.info("  Initial risk state:")
+        logger.info("    Total Pc: %.2e", risk_before.total_collision_probability)
+        logger.info("    Expected debris: %.0f fragments", risk_before.total_expected_debris)
+        logger.info("    Kessler index: %.3f", risk_before.kessler_risk_index)
 
         # Run optimizer
         plan = optimizer.optimize(method=method)
 
         elapsed = time.time() - t_start
-        print(f"\n  Optimization completed in {elapsed:.2f}s")
-        print(f"  Maneuvers in optimal plan: {len(plan.maneuvers)}")
-        print(f"  Total fuel cost: {plan.total_fuel_cost_ms:.1f} m/s")
-        print(f"  Conjunctions resolved: {len(plan.conjunctions_resolved)}")
+        logger.info("  Optimization completed in %.2fs", elapsed)
+        logger.info("  Maneuvers in optimal plan: %d", len(plan.maneuvers))
+        logger.info("  Total fuel cost: %.1f m/s", plan.total_fuel_cost_ms)
+        logger.info("  Conjunctions resolved: %d", len(plan.conjunctions_resolved))
 
         # Risk graph analysis
         self.risk_graph = optimizer.risk_graph
         clusters = self.risk_graph.get_risk_clusters()
-        print(f"\n  Risk graph analysis:")
-        print(f"    Risk clusters: {len(clusters)}")
+        logger.info("  Risk graph analysis:")
+        logger.info("    Risk clusters: %d", len(clusters))
         if clusters:
-            print(f"    Largest cluster: {len(clusters[0])} spacecraft")
-        print(f"    Total graph risk: {self.risk_graph.total_risk():.2e}")
+            logger.info("    Largest cluster: %d spacecraft", len(clusters[0]))
+        logger.info("    Total graph risk: %.2e", self.risk_graph.total_risk())
 
         # Most threatened
         threatened = self.risk_graph.most_threatened_spacecraft(3)
         if threatened:
-            print(f"    Most threatened: {', '.join(threatened)}")
+            logger.info("    Most threatened: %s", ', '.join(threatened))
 
         # Environment stability
         self.environment = optimizer.environment
         unstable = [s for s in self.environment.shells if s.is_unstable]
-        print(f"\n  Orbital environment:")
-        print(f"    Shells analyzed: {len(self.environment.shells)}")
-        print(f"    Unstable shells: {len(unstable)}")
+        logger.info("  Orbital environment:")
+        logger.info("    Shells analyzed: %d", len(self.environment.shells))
+        logger.info("    Unstable shells: %d", len(unstable))
         if unstable:
             for s in unstable[:3]:
-                print(f"      {s.alt_min_km:.0f}-{s.alt_max_km:.0f} km: "
-                      f"gen={s.debris_generation_rate:.2f}/yr, "
-                      f"removal={s.debris_removal_rate:.2f}/yr")
+                logger.info("      %.0f-%.0f km: gen=%.2f/yr, removal=%.2f/yr",
+                            s.alt_min_km, s.alt_max_km,
+                            s.debris_generation_rate, s.debris_removal_rate)
 
     def _create_demo_conjunctions(self):
         """
@@ -534,9 +527,9 @@ class CollisionPreventionSimulation:
         In reality, operators screen thousands of objects over 7-day windows.
         With 30 objects over 24h, real conjunctions are statistically rare.
         """
-        print(f"\n  Note: Real LEO conjunctions are rare events. For a constellation")
-        print(f"  of 30 objects over 24h, finding none is realistic.")
-        print(f"  Creating synthetic demonstration conjunctions...\n")
+        logger.info("  Real LEO conjunctions are rare events. For a constellation")
+        logger.info("  of 30 objects over 24h, finding none is realistic.")
+        logger.info("  Creating synthetic demonstration conjunctions...")
 
         sc_dict = {sc.id: sc for sc in self.spacecraft_list}
 
@@ -593,17 +586,16 @@ class CollisionPreventionSimulation:
 
     def _print_final_summary(self):
         """Print final simulation summary."""
-        print(f"\n{'='*70}")
-        print("  SIMULATION COMPLETE — SUMMARY")
-        print(f"{'='*70}")
-        print(f"\n  Constellation: {self.stats['spacecraft_total']} objects")
-        print(f"  Conjunctions detected: {len(self.conjunctions)}")
-        print(f"  Maneuvers planned: {len(self.planned_maneuvers)}")
+        logger.info("=" * 70)
+        logger.info("  SIMULATION COMPLETE")
+        logger.info("=" * 70)
+        logger.info("  Constellation: %d objects", self.stats['spacecraft_total'])
+        logger.info("  Conjunctions detected: %d", len(self.conjunctions))
+        logger.info("  Maneuvers planned: %d", len(self.planned_maneuvers))
         if self.planned_maneuvers:
             total_dv = sum(m.fuel_cost for m in self.planned_maneuvers)
-            print(f"  Total Δv expended: {total_dv:.2f} m/s")
-        print(f"\n  System status: OPERATIONAL")
-        print(f"{'='*70}\n")
+            logger.info("  Total dv expended: %.2f m/s", total_dv)
+        logger.info("  System status: OPERATIONAL")
 
 
 # ============================================================================
@@ -713,7 +705,7 @@ def plot_orbits_3d(spacecraft_list: List[Spacecraft],
 
     plt.tight_layout()
     plt.savefig('orbits_3d.png', dpi=150, bbox_inches='tight', facecolor=bg_color)
-    print("  Saved: orbits_3d.png")
+    logger.info("  Saved: orbits_3d.png")
     plt.close()
 
 
@@ -724,7 +716,7 @@ def plot_risk_timeline(conjunctions: List[Conjunction],
     Timeline showing conjunctions and planned maneuvers.
     """
     if not conjunctions:
-        print("  No conjunctions to plot.")
+        logger.info("  No conjunctions to plot.")
         return
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
@@ -776,7 +768,7 @@ def plot_risk_timeline(conjunctions: List[Conjunction],
 
     plt.tight_layout()
     plt.savefig('risk_timeline.png', dpi=150, bbox_inches='tight')
-    print("  Saved: risk_timeline.png")
+    logger.info("  Saved: risk_timeline.png")
     plt.close()
 
 
@@ -848,7 +840,7 @@ def plot_debris_analysis(sc1: Spacecraft, sc2: Spacecraft,
     plt.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig('debris_analysis.png', dpi=150, bbox_inches='tight')
-    print("  Saved: debris_analysis.png")
+    logger.info("  Saved: debris_analysis.png")
     plt.close()
 
 
@@ -904,7 +896,7 @@ def plot_risk_evolution(spacecraft_list: List[Spacecraft],
     plt.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig('risk_evolution.png', dpi=150, bbox_inches='tight')
-    print("  Saved: risk_evolution.png")
+    logger.info("  Saved: risk_evolution.png")
     plt.close()
 
 
@@ -921,9 +913,9 @@ def main():
     sim.run_full_simulation()
 
     # Generate visualizations
-    print(f"\n{'='*70}")
-    print("  GENERATING VISUALIZATIONS")
-    print(f"{'='*70}")
+    logger.info("=" * 70)
+    logger.info("  GENERATING VISUALIZATIONS")
+    logger.info("=" * 70)
 
     plot_orbits_3d(sim.spacecraft_list, sim.conjunctions, sim.planned_maneuvers)
     plot_risk_timeline(sim.conjunctions, sim.planned_maneuvers)
@@ -939,8 +931,7 @@ def main():
 
     plot_risk_evolution(sim.spacecraft_list, sim.conjunctions)
 
-    print(f"\n  All visualizations saved to current directory.")
-    print(f"{'='*70}\n")
+    logger.info("  All visualizations saved to current directory.")
 
 
 if __name__ == '__main__':
