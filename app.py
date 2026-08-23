@@ -54,34 +54,12 @@ _sim_thread = threading.Thread(target=_run_sim_background, daemon=True)
 _sim_thread.start()
 
 
-# --------------------------------------------------------------------------
-# Routes that work BEFORE simulation is ready
-# --------------------------------------------------------------------------
-
 _LOADING_HTML = '''<!DOCTYPE html>
-<html><head><title>Loading Simulation...</title>
+<html><head><title>Loading...</title>
 <meta http-equiv="refresh" content="10">
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex;
-       align-items: center; justify-content: center; min-height: 100vh; margin: 0;
-       background: #0a0e1a; color: #e0e0e0; }
-.loader { text-align: center; max-width: 500px; padding: 20px; }
-.spinner { width: 50px; height: 50px; border: 4px solid #333; border-top-color: #00d4ff;
-           border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 24px; }
-@keyframes spin { to { transform: rotate(360deg); } }
-h1 { font-size: 1.4rem; margin-bottom: 8px; color: #fff; }
-p { color: #888; font-size: 0.95rem; line-height: 1.5; }
-.status { margin-top: 16px; padding: 12px; background: #1a1e2e; border-radius: 8px;
-          border: 1px solid #333; font-family: monospace; font-size: 0.85rem; color: #00d4ff; }
-</style></head><body>
-<div class="loader">
-<div class="spinner"></div>
-<h1>Initializing Orbital Simulation</h1>
-<p>Propagating spacecraft trajectories, screening conjunctions,
-   and computing avoidance maneuvers for 50 spacecraft...</p>
-<p>This takes about 2-3 minutes on first load. The page will auto-refresh.</p>
-<div class="status">Status: Running simulation...</div>
-</div></body></html>'''
+</head><body>
+Simulation is starting, please check back shortly.
+</body></html>'''
 
 
 @app.route('/healthz')
