@@ -97,7 +97,7 @@ def healthz():
 @app.route('/')
 def index():
     if _sim_ready.is_set() and _real_app:
-        return send_from_directory('dashboard', 'index.html')
+        return send_from_directory('dashboard', 'landing.html')
     return _LOADING_HTML, 200
 
 

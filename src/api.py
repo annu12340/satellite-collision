@@ -978,7 +978,13 @@ def run_simulation(seed=42, n_spacecraft=None):
 
 @app.route('/')
 def serve_dashboard():
-    """Serve the main dashboard HTML."""
+    """Serve the landing page (default entry point)."""
+    return send_from_directory(app.static_folder, 'landing.html')
+
+
+@app.route('/index.html')
+def serve_index():
+    """Serve the main dashboard HTML (linked from the landing page)."""
     return send_from_directory(app.static_folder, 'index.html')
 
 
