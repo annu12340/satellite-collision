@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Post-Task Module Validation",
+      "trigger": "PostTaskExec",
+      "description": "After a spec task completes, validates that all core physics and decision modules still import cleanly — catching broken imports, circular dependencies, and syntax errors introduced during implementation.",
+      "action": {
+        "type": "command",
+        "command": "cd /Users/annu/Desktop/satellite-collision && python -c \"from src.orbital_mechanics import propagate_state; print('✓ orbital_mechanics imports OK')\" && python -c \"from src.conjunction import screen_conjunctions, Conjunction; print('✓ conjunction module imports OK')\" && python -c \"from src.avoidance import plan_avoidance_maneuver; print('✓ avoidance module imports OK')\" && python -c \"from src.damage_minimization import estimate_debris_count; print('✓ damage_minimization imports OK')\" && python -c \"from src.risk_optimizer import optimize_greedy; print('✓ risk_optimizer imports OK')\" && echo \"All post-task validation checks passed.\"",
+        "timeout": 30
+      }
+    }
+  ]
+}
