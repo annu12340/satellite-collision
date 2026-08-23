@@ -14,7 +14,11 @@
 - [Performance](#performance)
 - [Technology Stack](#technology-stack)
 - [Why This Matters](#why-this-matters)
-- [Built With Kiro](#built-with-kiro)
+- [Setup](#setup)
+- [Running the System](#running-the-system)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [How is KIro used](#built-with-kiro)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -772,7 +776,7 @@ Space is getting crowded. This system is designed to keep it usable.
 
 ---
 
-## Built With Kiro
+## How is KIro used
 
 This project was built inside [Kiro](https://kiro.dev), and it leans on Kiro's spec, steering, and hook systems rather than just using it as a chat-based code generator. Here's how each piece is actually wired up in `.kiro/`.
 
