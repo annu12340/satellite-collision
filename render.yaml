@@ -10,5 +10,7 @@ services:
         value: "3.11.9"
       - key: SIM_SEED
         value: "42"
+      - key: N_SPACECRAFT
+        value: "20"
       - key: OPENAI_API_KEY
         sync: false

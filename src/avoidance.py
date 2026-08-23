@@ -229,7 +229,7 @@ def maneuver_effectiveness_scalar(phi_rv: np.ndarray,
 def optimal_maneuver_time(state: StateVector, tca: float,
                           earliest: float = 0.0,
                           area_mass_ratio: float = 0.01,
-                          n_samples: int = 20) -> float:
+                          n_samples: int = 8) -> float:
     """
     Find the optimal maneuver time that maximizes effectiveness.
 
@@ -247,7 +247,12 @@ def optimal_maneuver_time(state: StateVector, tca: float,
     area_mass_ratio : float
         A/m ratio
     n_samples : int
-        Number of time samples to evaluate
+        Number of time samples to evaluate. This is a search-resolution
+        knob only (coarsens/refines when the optimal burn time is found);
+        it does not change any propagation physics. Default of 8 (down
+        from 20) trades some timing precision for ~2.5x fewer STM
+        propagations per maneuver design, since each sample here calls
+        propagate_state + propagate_with_stm.
 
     Returns
     -------

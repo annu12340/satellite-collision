@@ -750,8 +750,15 @@ def build_debris_analysis(sim, n_monte_carlo=300):
     }
 
 
-def run_simulation(seed=42, n_spacecraft=50):
+def run_simulation(seed=42, n_spacecraft=None):
     """Run the simulation and cache all data for the API."""
+
+    if n_spacecraft is None:
+        # Read at call time (not import time) so deployments can size the
+        # constellation via env var without touching code. Defaults to 20
+        # (a production-safe size for constrained hosting) rather than the
+        # local-dev default of 50.
+        n_spacecraft = int(os.environ.get('N_SPACECRAFT', 20))
 
     print(f"Running satellite collision simulation (seed={seed})...")
     sim = CollisionPreventionSimulation(n_spacecraft=n_spacecraft, seed=seed)

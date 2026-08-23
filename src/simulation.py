@@ -240,7 +240,8 @@ class CollisionPreventionSimulation:
     Main simulation engine that demonstrates the full collision prevention pipeline.
     """
 
-    def __init__(self, n_spacecraft: int = 50, seed: int = 42):
+    def __init__(self, n_spacecraft: int = 50, seed: int = 42,
+                 max_conjunctions_to_process: int = 25):
         """
         Initialize simulation with synthetic constellation.
 
@@ -250,6 +251,11 @@ class CollisionPreventionSimulation:
             Number of spacecraft to simulate
         seed : int
             Random seed
+        max_conjunctions_to_process : int
+            Upper bound on how many screened conjunctions (already sorted by
+            risk, descending) are carried into Phase 2/3/4. This bounds the
+            worst-case cost of downstream maneuver design regardless of how
+            many pairs get flagged during screening.
         """
         logger.info("=" * 70)
         logger.info("   AI SATELLITE COLLISION PREVENTION SYSTEM")
@@ -258,6 +264,8 @@ class CollisionPreventionSimulation:
 
         self.spacecraft_list = generate_leo_constellation(n_spacecraft, seed=seed)
         self.spacecraft_list = inject_collision_scenario(self.spacecraft_list, seed=seed + 1)
+
+        self.max_conjunctions_to_process = max_conjunctions_to_process
 
         self.conjunctions: List[Conjunction] = []
         self.planned_maneuvers: List[Maneuver] = []
@@ -311,12 +319,22 @@ class CollisionPreventionSimulation:
         self.conjunctions = run_conjunction_screening(
             self.spacecraft_list,
             time_window=time_window_hours * 3600,
-            pc_threshold=1e-10,  # Very low threshold to catch events in demo
+            pc_threshold=1e-7,  # Standard negligible-risk cutoff (Level 0: Pc < 1e-7 is essentially zero risk, ignore)
         )
 
         elapsed = time.time() - t_start
         logger.info("  Screening completed in %.2fs", elapsed)
         logger.info("  Conjunctions found: %d", len(self.conjunctions))
+
+        # Conjunctions are already sorted by risk (descending) by
+        # run_conjunction_screening(). Cap the working list so Phase 2/3/4
+        # (maneuver design, damage assessment, optimization) have a bounded
+        # worst-case cost regardless of how many pairs get flagged.
+        if len(self.conjunctions) > self.max_conjunctions_to_process:
+            n_dropped = len(self.conjunctions) - self.max_conjunctions_to_process
+            logger.info("  Truncating to top %d conjunctions by risk (dropping %d lower-risk events)",
+                        self.max_conjunctions_to_process, n_dropped)
+            self.conjunctions = self.conjunctions[:self.max_conjunctions_to_process]
 
         if self.conjunctions:
             pcs = [c.probability_of_collision for c in self.conjunctions]
