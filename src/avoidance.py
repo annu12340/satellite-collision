@@ -838,7 +838,6 @@ def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
         Planned maneuvers in execution order
     """
     import os
-    import signal
     
     # On deployment (Render), skip expensive maneuver planning to avoid timeouts
     # Set SKIP_MANEUVER_PLANNING=1 in environment to enable
@@ -858,86 +857,69 @@ def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
     planned_maneuvers = []
     modified_spacecraft = {}  # Track spacecraft that have been assigned maneuvers
 
-    # For timeout handling on Unix systems
-    def _timeout_handler(signum, frame):
-        raise TimeoutError("Maneuver planning exceeded timeout")
-    
     start_time = time.time()
-    old_handler = None
-    
-    try:
-        # Set alarm signal for Unix (won't work on Windows, but safe to try)
-        if hasattr(signal, 'SIGALRM'):
-            old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-            signal.alarm(int(timeout_seconds) + 1)
 
-        for conj in prioritized:
-            # Check wall-clock timeout
-            elapsed = time.time() - start_time
-            if elapsed > timeout_seconds:
-                logger.warning(
-                    "Maneuver planning timeout after %.1f sec (planned %d maneuvers). "
-                    "Returning best-so-far.",
-                    elapsed, len(planned_maneuvers)
+    for conj in prioritized:
+        # Check wall-clock timeout (simple approach, works in background threads)
+        elapsed = time.time() - start_time
+        if elapsed > timeout_seconds:
+            logger.warning(
+                "Maneuver planning timeout after %.1f sec (planned %d maneuvers). "
+                "Returning best-so-far.",
+                elapsed, len(planned_maneuvers)
+            )
+            break
+
+        # Check if either object can maneuver
+        obj1 = sc_dict.get(conj.obj1_id)
+        obj2 = sc_dict.get(conj.obj2_id)
+
+        if obj1 is None or obj2 is None:
+            continue
+
+        # Use modified state if spacecraft already has a planned maneuver
+        if conj.obj1_id in modified_spacecraft:
+            obj1 = modified_spacecraft[conj.obj1_id]
+        if conj.obj2_id in modified_spacecraft:
+            obj2 = modified_spacecraft[conj.obj2_id]
+
+        # Determine who maneuvers (prefer the one with more fuel)
+        maneuverer, target = None, None
+        if obj1.maneuverable and obj2.maneuverable:
+            fuel1 = obj1.delta_v_budget - obj1.delta_v_used
+            fuel2 = obj2.delta_v_budget - obj2.delta_v_used
+            if fuel1 >= fuel2:
+                maneuverer, target = obj1, obj2
+            else:
+                maneuverer, target = obj2, obj1
+        elif obj1.maneuverable:
+            maneuverer, target = obj1, obj2
+        elif obj2.maneuverable:
+            maneuverer, target = obj2, obj1
+        else:
+            continue  # Neither can maneuver
+
+        # Check decision
+        decision = ManeuverDecision.should_maneuver(conj, maneuverer, conj.tca)
+
+        if decision in ('MANEUVER', 'CONSIDER'):
+            try:
+                maneuver = design_avoidance_maneuver(
+                    maneuverer, target, conj,
+                    target_miss_km=1.0,
+                    fast_mode=fast_mode
                 )
-                break
 
-            # Check if either object can maneuver
-            obj1 = sc_dict.get(conj.obj1_id)
-            obj2 = sc_dict.get(conj.obj2_id)
-
-            if obj1 is None or obj2 is None:
+                if maneuver is not None:
+                    planned_maneuvers.append(maneuver)
+                    # Update spacecraft state for subsequent planning
+                    modified_spacecraft[maneuverer.id] = apply_maneuver(maneuverer, maneuver)
+            except Exception as e:
+                logger.warning("Failed to plan maneuver for %s <-> %s: %s",
+                              conj.obj1_id, conj.obj2_id, str(e))
                 continue
 
-            # Use modified state if spacecraft already has a planned maneuver
-            if conj.obj1_id in modified_spacecraft:
-                obj1 = modified_spacecraft[conj.obj1_id]
-            if conj.obj2_id in modified_spacecraft:
-                obj2 = modified_spacecraft[conj.obj2_id]
-
-            # Determine who maneuvers (prefer the one with more fuel)
-            maneuverer, target = None, None
-            if obj1.maneuverable and obj2.maneuverable:
-                fuel1 = obj1.delta_v_budget - obj1.delta_v_used
-                fuel2 = obj2.delta_v_budget - obj2.delta_v_used
-                if fuel1 >= fuel2:
-                    maneuverer, target = obj1, obj2
-                else:
-                    maneuverer, target = obj2, obj1
-            elif obj1.maneuverable:
-                maneuverer, target = obj1, obj2
-            elif obj2.maneuverable:
-                maneuverer, target = obj2, obj1
-            else:
-                continue  # Neither can maneuver
-
-            # Check decision
-            decision = ManeuverDecision.should_maneuver(conj, maneuverer, conj.tca)
-
-            if decision in ('MANEUVER', 'CONSIDER'):
-                try:
-                    maneuver = design_avoidance_maneuver(
-                        maneuverer, target, conj,
-                        target_miss_km=1.0,
-                        fast_mode=fast_mode
-                    )
-
-                    if maneuver is not None:
-                        planned_maneuvers.append(maneuver)
-                        # Update spacecraft state for subsequent planning
-                        modified_spacecraft[maneuverer.id] = apply_maneuver(maneuverer, maneuver)
-                except Exception as e:
-                    logger.warning("Failed to plan maneuver for %s <-> %s: %s",
-                                  conj.obj1_id, conj.obj2_id, str(e))
-                    continue
-
-        # Sort by execution time
-        planned_maneuvers.sort(key=lambda m: m.time)
-
-    finally:
-        # Cancel alarm
-        if hasattr(signal, 'SIGALRM') and old_handler is not None:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+    # Sort by execution time
+    planned_maneuvers.sort(key=lambda m: m.time)
 
     return planned_maneuvers
