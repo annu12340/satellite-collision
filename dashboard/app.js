@@ -71,21 +71,63 @@ async function init() {
         const timeoutId = setTimeout(() => controller.abort(), 15000);
         const response = await fetch('/api/all', { signal: controller.signal });
         clearTimeout(timeoutId);
+        
         if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
+            if (response.status === 503) {
+                // Simulation still loading
+                throw new Error('LOADING');
+            } else if (response.status === 500) {
+                // Simulation error
+                const data = await response.json();
+                throw new Error(`SERVER_ERROR: ${data.message || 'Simulation failed'}`);
+            }
+            throw new Error(`HTTP ${response.status}`);
         }
+        
         simData = await response.json();
+        if (!simData || !simData.spacecraft) {
+            throw new Error('EMPTY');
+        }
+        
         updateLoadStatus('Building 3D scene...', 50);
     } catch (err) {
-        console.error('Failed to fetch simulation data:', err);
-        const isTimeout = err.name === 'AbortError';
+        const errMsg = err.message || err.toString();
+        console.error('Failed to fetch simulation data:', errMsg);
+        
+        if (errMsg === 'LOADING') {
+            updateLoadStatus(
+                'Simulation is initializing... This takes about 30-60 seconds on first load. Please wait.',
+                20
+            );
+            setTimeout(init, 3000);
+            return;
+        } else if (errMsg.startsWith('SERVER_ERROR')) {
+            updateLoadStatus(
+                'Simulation encountered an error: ' + errMsg.split(': ')[1] + '\n\nRefresh the page to try again.',
+                20
+            );
+            return;
+        } else if (errMsg === 'EMPTY') {
+            updateLoadStatus(
+                'Simulation data is empty. This may indicate the simulation crashed or is still initializing. Retrying...',
+                20
+            );
+            setTimeout(init, 3000);
+            return;
+        } else if (err.name === 'AbortError') {
+            updateLoadStatus(
+                'Request timed out. The server is taking longer than expected. Retrying...',
+                20
+            );
+            setTimeout(init, 3000);
+            return;
+        }
+        
         updateLoadStatus(
-            isTimeout
-                ? 'Simulation processing... This may take up to 60 seconds. Please wait.'
-                : 'Unable to load simulation. The server rate limit could be hit or there is some connectivity issue. Please check your connection and refresh.',
+            'Connection issue: ' + errMsg + '\n\nPlease check your connection and refresh the page.',
             20
         );
-        setTimeout(init, 2000);
+        setTimeout(init, 5000);
         return;
     }
 

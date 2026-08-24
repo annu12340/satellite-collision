@@ -36,16 +36,19 @@ def _run_sim_background():
     global _sim_error, _real_app
     try:
         # These imports pull in numpy, scipy, etc. — the slow part
+        print("  [SIM] Importing heavy modules (numpy, scipy)...", flush=True)
         from src.api import app as real_app, run_simulation
+        print("  [SIM] Imports complete. Running simulation...", flush=True)
         seed = int(os.environ.get("SIM_SEED", "42"))
         run_simulation(seed=seed)
         _real_app = real_app
         _sim_ready.set()
-        print("\n  Simulation ready. Dashboard is live.\n", flush=True)
+        print("\n  [SIM] Simulation ready. Dashboard is live.\n", flush=True)
     except Exception as e:
         import traceback
         _sim_error = str(e)
-        traceback.print_exc()
+        print(f"  [SIM] ERROR: {_sim_error}", flush=True)
+        traceback.print_exc(file=sys.stdout)
         _sim_ready.set()
 
 
