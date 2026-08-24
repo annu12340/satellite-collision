@@ -2,7 +2,7 @@
 
 ## Index
 
-- [Demo](#demo)
+- [Quick Links](#quick-links)
 - [The Elevator Pitch](#the-elevator-pitch)
 - [How is Kiro Used](#how-is-kiro-used)
 - [The Day the Sky Broke](#the-day-the-sky-broke)
@@ -23,12 +23,11 @@
 - [Why This Matters](#why-this-matters)
 - [Why We Need AI](#why-we-need-ai)
 - [Innovation & Roadmap](#innovation--roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+
 
 ---
 
-## Demo
+## Quick Links
 
 | | |
 |---|---|
@@ -37,58 +36,9 @@
 | **More detailed docs** | *https://satellite-collision-1.onrender.com/docs* |
 | **Screenshots** | See [The Dashboard](#the-dashboard) section below for annotated screenshots and visualization output |
 
-The demo walkthrough should cover: launching the simulation, the 3D orbital view detecting a conjunction, the decision engine comparing optimization strategies, an AI-generated maneuver recommendation, and a look at how Kiro's specs/steering/hooks were used to build the feature end-to-end (see [How is Kiro Used](#how-is-kiro-used)).
+Look at how Kiro's specs/steering/hooks were used to build the feature end-to-end (see [How is Kiro Used](#how-is-kiro-used)).
 
-## The Elevator Pitch
 
-### The Problem
-
-Three numbers explain why this project exists.
-
-- **$2.2 trillion** — roughly the size of the global economy that sits on top of satellite infrastructure. GPS alone is estimated at $1.4 trillion of value to the U.S. economy. Ridesharing, payment networks, precision agriculture, and military logistics all depend on satellites staying where they're supposed to be.
-- **~50 million** — the number of possible collision pairs among just 10,000 tracked objects in orbit (N·(N-1)/2 scaling). Every additional satellite makes the problem quadratically worse, not linearly.
-- **~25 m/s** — a typical total delta-v fuel budget for a satellite's entire 15-year operational life. Not per year — total. Every avoidance maneuver permanently spends down that budget; there's no refueling in orbit.
-
-Today, conjunction response is largely manual: an analyst gets a warning, opens a spreadsheet, calls the operator, the operator calls engineering, and a team spends hours deciding whether a 1-in-10,000 collision probability justifies burning fuel — for one conjunction, out of hundreds flagged per week. That process doesn't scale as constellations grow into the tens of thousands of objects.
-
-### Our Solution
-
-This system automates that decision loop end-to-end, turning a process that takes human teams hours into one that runs in seconds. It's built from five cooperating layers (each detailed further in [How It Works: The Full Story](#how-it-works-the-full-story)):
-
-1. **Physics engine** — 6-DOF orbit propagation (J2 oblateness, atmospheric drag, solar radiation pressure) plus full 6x6 covariance propagation via the State Transition Matrix, so the system tracks not just where objects are but how uncertain that estimate is.
-2. **Conjunction screening** — a cascade of cheap geometric filters (altitude, plane, distance) cuts ~50 million raw pairs down to the tens that actually warrant a full probability-of-collision calculation.
-3. **Multi-objective optimizer** — Greedy, Network Flow (MILP), Monte Carlo Tree Search, and GPU-accelerated CuOpt all run and get compared, with an adaptive selector picking the best fit for the situation. MCTS-style multi-step lookahead can find solutions that use significantly less fuel than a pure greedy approach by avoiding maneuvers that create worse conjunctions days later.
-4. **Damage minimization** — when a maneuver isn't possible (dead satellite, insufficient fuel, insufficient warning time), the system falls back to the NASA Standard Breakup Model to find the least-bad outcome: minimizing cross-section, biasing impact geometry, and steering debris toward orbits that decay faster.
-5. **AI explainability** — every recommendation comes with a plain-language rationale (which conjunctions it resolves, fuel cost versus alternatives, remaining budget for known upcoming threats) instead of a bare "this strategy was selected" output. See [Why We Need AI](#why-we-need-ai) for why this is a deliberate layer on top of the physics, not baked into it.
-
-### Why This Is Hard
-
-This isn't CRUD-app-with-a-space-theme difficulty. It combines several genuinely hard problems at once:
-
-- An **NP-hard, multi-resource, multi-constraint, multi-horizon** optimization problem — not a single collision, but the entire constellation's fuel budget over a multi-day planning window.
-- **Real 6-DOF orbital dynamics**, not simplified circular-orbit approximations.
-- **Uncertainty quantification** via covariance propagation — the system never treats a position estimate as exact.
-- **Irreversible resource constraints** — fuel spent avoiding today's conjunction is fuel that doesn't exist for tomorrow's.
-- **Cascade effects** — resolving one conjunction can change the risk landscape for every other object, so every action has to be re-evaluated against the whole constellation.
-- **Real-time 3D rendering** of the result, because operators need to see and trust a recommendation before committing irreplaceable fuel.
-
-### The Market
-
-- **SpaceX** operates 6,000+ Starlink satellites and performs on the order of 10,000+ collision-avoidance maneuvers per year.
-- **Amazon Kuiper**, **OneWeb** (648 satellites), **Telesat** (298), and **Planet Labs** (200+) are all adding to the same crowded orbital shells.
-- The space traffic management market is projected to reach roughly **$1.6 billion by 2030**.
-- Conjunction screening for the entire tracked catalog is currently performed largely manually by the U.S. Space Force, at no cost to operators worldwide — a process that does not scale as the tracked object count moves toward 100,000+.
-
-### Tech Stack
-
-- **Python + NumPy/SciPy** for orbital mechanics and numerical integration.
-- **NetworkX** for conjunction risk graphs and min-cost flow optimization.
-- **NVIDIA CuOpt** for GPU-accelerated MILP solving at scale (with a local CPU fallback — see [Step 5](#step-5-the-hardest-part--deciding-what-to-do)).
-- **OpenAI / NVIDIA NIM (LLM)** to translate optimizer output into operator-readable recommendations.
-- **Flask** for the REST API serving real-time risk metrics.
-- **Three.js** for in-browser 3D orbital visualization.
-
-Full dependency details, versions, and rationale are in [Technology Stack](#technology-stack) and [Setup](#setup).
 
 ---
 
@@ -200,15 +150,15 @@ That nightmare has a name: **Kessler Syndrome**. The idea is simple and terrifyi
   Potential cascade (Kessler Syndrome)
 ```
 
-### What the Collision Proved
+### Numberst that matter
 
-The Iridium-Cosmos collision proved three things:
-1. **Tracking isn't enough.** We knew the objects were there. We even knew they might get close. But nobody acted.
-2. **One collision can threaten thousands.** The debris cloud from a single event creates hundreds of new conjunction events per day.
-3. **The problem is getting exponentially worse.** In 2009, there were roughly 1,000 active satellites. Today, there are over 10,000. Megaconstellations like Starlink are adding thousands more every year.
+Three numbers explain why this project exists.
 
-This project exists because we can't afford another Iridium-Cosmos. Not once. Not ever.
+- **$2.2 trillion** — roughly the size of the global economy that sits on top of satellite infrastructure. GPS alone is estimated at $1.4 trillion of value to the U.S. economy. Ridesharing, payment networks, precision agriculture, and military logistics all depend on satellites staying where they're supposed to be.
+- **~50 million** — the number of possible collision pairs among just 10,000 tracked objects in orbit (N·(N-1)/2 scaling). Every additional satellite makes the problem quadratically worse, not linearly.
+- **~25 m/s** — a typical total delta-v fuel budget for a satellite's entire 15-year operational life. Not per year — total. Every avoidance maneuver permanently spends down that budget; there's no refueling in orbit.
 
+Today, conjunction response is largely manual: an analyst gets a warning, opens a spreadsheet, calls the operator, the operator calls engineering, and a team spends hours deciding whether a 1-in-10,000 collision probability justifies burning fuel — for one conjunction, out of hundreds flagged per week. That process doesn't scale as constellations grow into the tens of thousands of objects.
 ---
 
 ## What This System Does
@@ -262,13 +212,21 @@ The difficulty is in every word of that sentence. "Uncertain" means we're workin
 | 3D Visualization | Three.js orbital viz, real-time SSE event streaming | Complete |
 | GPU Acceleration | NVIDIA CuOpt integration for large-scale MILP solving | Integrated |
 
+
+This system automates that decision loop end-to-end, turning a process that takes human teams hours into one that runs in seconds. It's built from five cooperating layers (each detailed further in [How It Works: The Full Story](#how-it-works-the-full-story)):
+
+1. **Physics engine** — 6-DOF orbit propagation (J2 oblateness, atmospheric drag, solar radiation pressure) plus full 6x6 covariance propagation via the State Transition Matrix, so the system tracks not just where objects are but how uncertain that estimate is.
+2. **Conjunction screening** — a cascade of cheap geometric filters (altitude, plane, distance) cuts ~50 million raw pairs down to the tens that actually warrant a full probability-of-collision calculation.
+3. **Multi-objective optimizer** — Greedy, Network Flow (MILP), Monte Carlo Tree Search, and GPU-accelerated CuOpt all run and get compared, with an adaptive selector picking the best fit for the situation. MCTS-style multi-step lookahead can find solutions that use significantly less fuel than a pure greedy approach by avoiding maneuvers that create worse conjunctions days later.
+4. **Damage minimization** — when a maneuver isn't possible (dead satellite, insufficient fuel, insufficient warning time), the system falls back to the NASA Standard Breakup Model to find the least-bad outcome: minimizing cross-section, biasing impact geometry, and steering debris toward orbits that decay faster.
+5. **AI explainability** — every recommendation comes with a plain-language rationale (which conjunctions it resolves, fuel cost versus alternatives, remaining budget for known upcoming threats) instead of a bare "this strategy was selected" output. See [Why We Need AI](#why-we-need-ai) for why this is a deliberate layer on top of the physics, not baked into it.
+
+
 ---
 
 ## How It Works: The Full Story
 
 Imagine you're a satellite operator. You have 50 spacecraft in your constellation. It's 3 AM and your automated system just flagged a conjunction — one of your satellites is on a collision course with a piece of debris from (you guessed it) the 2009 Iridium-Cosmos event. You have 18 hours until closest approach. What do you do?
-
-This system answers that question in eight steps, running continuously, watching everything at once.
 
 ### The Pipeline
 
@@ -808,6 +766,13 @@ Real-time updates flow through Server-Sent Events:
 }
 ```
 
+### The Market
+
+- **SpaceX** operates 6,000+ Starlink satellites and performs on the order of 10,000+ collision-avoidance maneuvers per year.
+- **Amazon Kuiper**, **OneWeb** (648 satellites), **Telesat** (298), and **Planet Labs** (200+) are all adding to the same crowded orbital shells.
+- The space traffic management market is projected to reach roughly **$1.6 billion by 2030**.
+- Conjunction screening for the entire tracked catalog is currently performed largely manually by the U.S. Space Force, at no cost to operators worldwide — a process that does not scale as the tracked object count moves toward 100,000+.
+
 ---
 
 ## Quick Start
@@ -1281,23 +1246,3 @@ In short: the orbital mechanics and optimization code answer "is there a threat,
 - Debris cascade modeling is probabilistic and model-averaged, not per-fragment tracked.
 
 ---
-
-## Contributing
-
-1. Read `docs/physics.md` before touching orbital mechanics
-2. Check the module dependency graph to understand impact
-3. Run `python -m src.simulation` to verify changes
-4. Test with known conjunction scenarios
-5. Validate physics consistency (energy conservation, Pc bounds)
-
-### References
-
-- `docs/physics.md` — Orbital mechanics equations and derivations
-- `docs/strategy.md` — Decision framework and algorithm selection
-- `docs/content.md` — Intuitive explanations for non-specialists
-
----
-
-## License
-
-This project is for research and educational purposes in orbital mechanics and space situational awareness.
