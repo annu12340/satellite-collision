@@ -3,6 +3,8 @@
 ## Index
 
 - [Demo](#demo)
+- [The Elevator Pitch](#the-elevator-pitch)
+- [How is Kiro Used](#how-is-kiro-used)
 - [The Day the Sky Broke](#the-day-the-sky-broke)
 - [What This System Does](#what-this-system-does)
 - [How It Works: The Full Story](#how-it-works-the-full-story)
@@ -21,7 +23,6 @@
 - [Why This Matters](#why-this-matters)
 - [Why We Need AI](#why-we-need-ai)
 - [Innovation & Roadmap](#innovation--roadmap)
-- [How is Kiro Used](#how-is-kiro-used)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -37,6 +38,138 @@
 | **Screenshots** | See [The Dashboard](#the-dashboard) section below for annotated screenshots and visualization output |
 
 The demo walkthrough should cover: launching the simulation, the 3D orbital view detecting a conjunction, the decision engine comparing optimization strategies, an AI-generated maneuver recommendation, and a look at how Kiro's specs/steering/hooks were used to build the feature end-to-end (see [How is Kiro Used](#how-is-kiro-used)).
+
+## The Elevator Pitch
+
+### The Problem
+
+Three numbers explain why this project exists.
+
+- **$2.2 trillion** — roughly the size of the global economy that sits on top of satellite infrastructure. GPS alone is estimated at $1.4 trillion of value to the U.S. economy. Ridesharing, payment networks, precision agriculture, and military logistics all depend on satellites staying where they're supposed to be.
+- **~50 million** — the number of possible collision pairs among just 10,000 tracked objects in orbit (N·(N-1)/2 scaling). Every additional satellite makes the problem quadratically worse, not linearly.
+- **~25 m/s** — a typical total delta-v fuel budget for a satellite's entire 15-year operational life. Not per year — total. Every avoidance maneuver permanently spends down that budget; there's no refueling in orbit.
+
+Today, conjunction response is largely manual: an analyst gets a warning, opens a spreadsheet, calls the operator, the operator calls engineering, and a team spends hours deciding whether a 1-in-10,000 collision probability justifies burning fuel — for one conjunction, out of hundreds flagged per week. That process doesn't scale as constellations grow into the tens of thousands of objects.
+
+### Our Solution
+
+This system automates that decision loop end-to-end, turning a process that takes human teams hours into one that runs in seconds. It's built from five cooperating layers (each detailed further in [How It Works: The Full Story](#how-it-works-the-full-story)):
+
+1. **Physics engine** — 6-DOF orbit propagation (J2 oblateness, atmospheric drag, solar radiation pressure) plus full 6x6 covariance propagation via the State Transition Matrix, so the system tracks not just where objects are but how uncertain that estimate is.
+2. **Conjunction screening** — a cascade of cheap geometric filters (altitude, plane, distance) cuts ~50 million raw pairs down to the tens that actually warrant a full probability-of-collision calculation.
+3. **Multi-objective optimizer** — Greedy, Network Flow (MILP), Monte Carlo Tree Search, and GPU-accelerated CuOpt all run and get compared, with an adaptive selector picking the best fit for the situation. MCTS-style multi-step lookahead can find solutions that use significantly less fuel than a pure greedy approach by avoiding maneuvers that create worse conjunctions days later.
+4. **Damage minimization** — when a maneuver isn't possible (dead satellite, insufficient fuel, insufficient warning time), the system falls back to the NASA Standard Breakup Model to find the least-bad outcome: minimizing cross-section, biasing impact geometry, and steering debris toward orbits that decay faster.
+5. **AI explainability** — every recommendation comes with a plain-language rationale (which conjunctions it resolves, fuel cost versus alternatives, remaining budget for known upcoming threats) instead of a bare "this strategy was selected" output. See [Why We Need AI](#why-we-need-ai) for why this is a deliberate layer on top of the physics, not baked into it.
+
+### Why This Is Hard
+
+This isn't CRUD-app-with-a-space-theme difficulty. It combines several genuinely hard problems at once:
+
+- An **NP-hard, multi-resource, multi-constraint, multi-horizon** optimization problem — not a single collision, but the entire constellation's fuel budget over a multi-day planning window.
+- **Real 6-DOF orbital dynamics**, not simplified circular-orbit approximations.
+- **Uncertainty quantification** via covariance propagation — the system never treats a position estimate as exact.
+- **Irreversible resource constraints** — fuel spent avoiding today's conjunction is fuel that doesn't exist for tomorrow's.
+- **Cascade effects** — resolving one conjunction can change the risk landscape for every other object, so every action has to be re-evaluated against the whole constellation.
+- **Real-time 3D rendering** of the result, because operators need to see and trust a recommendation before committing irreplaceable fuel.
+
+### The Market
+
+- **SpaceX** operates 6,000+ Starlink satellites and performs on the order of 10,000+ collision-avoidance maneuvers per year.
+- **Amazon Kuiper**, **OneWeb** (648 satellites), **Telesat** (298), and **Planet Labs** (200+) are all adding to the same crowded orbital shells.
+- The space traffic management market is projected to reach roughly **$1.6 billion by 2030**.
+- Conjunction screening for the entire tracked catalog is currently performed largely manually by the U.S. Space Force, at no cost to operators worldwide — a process that does not scale as the tracked object count moves toward 100,000+.
+
+### Tech Stack
+
+- **Python + NumPy/SciPy** for orbital mechanics and numerical integration.
+- **NetworkX** for conjunction risk graphs and min-cost flow optimization.
+- **NVIDIA CuOpt** for GPU-accelerated MILP solving at scale (with a local CPU fallback — see [Step 5](#step-5-the-hardest-part--deciding-what-to-do)).
+- **OpenAI / NVIDIA NIM (LLM)** to translate optimizer output into operator-readable recommendations.
+- **Flask** for the REST API serving real-time risk metrics.
+- **Three.js** for in-browser 3D orbital visualization.
+
+Full dependency details, versions, and rationale are in [Technology Stack](#technology-stack) and [Setup](#setup).
+
+---
+
+## How is Kiro Used
+
+This project was built inside [Kiro](https://kiro.dev), and it leans on Kiro's spec, steering, and hook systems rather than just using it as a chat-based code generator. Here's how each piece is actually wired up in `.kiro/`.
+
+| Kiro feature | Where it lives | What it does here |
+|---|---|---|
+| Specs | `.kiro/specs/` (9 features) | Requirements → design → tasks for every physics module and most dashboard features |
+| Steering | `.kiro/steering/` (6 docs) | Always-on architecture/context injected into every session |
+| Hooks | `.kiro/hooks/` (9 hooks) | Lint/format on save, physics safety gate, post-task validation, custom strategy auto-wiring, git commit workflow |
+
+### Specs — structured feature development
+
+Every non-trivial feature in this codebase went through Kiro's spec workflow (`.kiro/specs/`) instead of an ad-hoc prompt-and-hope loop, using the `requirements.md` → `design.md` → `tasks.md` progression. Not every spec carries all three files — the foundational physics specs stopped at `design.md` (implemented directly against a documented design), while later UI-focused specs were scoped with `requirements.md` and `tasks.md` and skipped a separate design doc since the change was small and visual:
+
+```
+.kiro/specs/
+├── orbital-mechanics/              # requirements + design   — core propagation, STM, perturbations
+├── conjunction-assessment/         # requirements + design   — screening, Pc calculation, TCA
+├── avoidance-maneuver-planning/    # requirements + design   — delta-v optimization
+├── simulation-engine/              # requirements + design   — main event loop orchestration
+├── cuopt-intervention-planning/    # requirements + design + tasks — GPU MILP maneuver sequencing
+├── live-bplane-encounter-geometry/ # requirements + tasks    — real-time B-plane visualization
+├── catastrophic-threshold-gauge/   # requirements + tasks    — risk threshold UI component
+├── mark-tca-zone-3d-visualization/ # requirements only       — 3D TCA marker rendering
+└── cuopt-fuel-allocation/          # initialized, not yet written — GPU fuel budget optimization
+```
+
+This matters a lot for a physics-heavy codebase: the `design.md` for `cuopt-intervention-planning` documents the MILP formulation and constraint set *before* a line of `cuopt_client.py` gets touched, and its `tasks.md` breaks that design into checkable implementation steps that Kiro executes and tracks one at a time. `cuopt-fuel-allocation` is an example of a spec that was scaffolded for a follow-on feature (per-satellite fuel budget allocation via MILP) but not carried further yet — left as-is here rather than backfilled, since overstating its status wouldn't reflect what was actually built.
+
+### Steering — always-on project context
+
+Six steering docs in `.kiro/steering/` are injected into every session automatically, so Kiro never has to rediscover the architecture from scratch:
+
+| File | What it encodes |
+|---|---|
+| `project-context.md` | Module map, data structures (spacecraft state, conjunction event, maneuver plan), API contract |
+| `project-roadmap.md` | Phase plan, success metrics, risk register |
+| `architecture-deep-dive.md` | Layered design principles, data flow diagrams, decision algorithm hierarchy |
+| `technical-stack.md` | Dependency rationale, performance characteristics, complexity tables |
+| `development-practices.md` | Module dependency graph, code review checklist for physics vs. API changes |
+| `physics-change-guard.md` | Hard constraints for anything touching orbital mechanics |
+
+Because these are steering files (not one-off chat context), they stay consistent across every session and every contributor using Kiro on this repo, instead of each person re-explaining the architecture in their own words.
+
+### Hooks — the automation layer
+
+This is the part worth calling out in detail. `.kiro/hooks/` has 9 hook definitions, each a JSON file Kiro reads and executes directly with no manual triggering required. They cover several different concerns:
+
+**1. Session context injection (`SessionStart`)**
+- `project-context-injection.json` and `development-practices-injection.json` fire the moment a new Kiro session opens and inject the architecture map and coding conventions straight into context via an `agent` action. This is what makes the steering docs above actually *active* rather than just reference material sitting in a folder — every session starts already knowing the module dependency graph, coordinate conventions, and debugging playbooks.
+
+**2. Code quality automation (`PostFileSave` / `PostFileCreate`)**
+- `lint-on-save.json` — matches `\.py$`, runs `ruff check --fix` on every Python file the moment it's saved.
+- `format-on-create.json` — matches `\.py$`, runs `ruff format` on brand new Python files right after creation, so nothing lands unformatted.
+- `dependency-check.json` — matches `requirements\.txt$`, runs `pip check` whenever the requirements file changes, catching dependency conflicts (e.g. NumPy/SciPy version clashes) immediately instead of at install time.
+
+**3. Physics safety gate (`PreToolUse`)** — the most interesting one
+- `physics-safety-gate.json` matches on the tool name (`fs_write|str_replace`) and fires *before* any write tool runs. Its `agent` action instructs Kiro to check whether the target is a physics-critical file (`orbital_mechanics.py`, `conjunction.py`, `damage_minimization.py`) and, if so, enforce five rules before the write is allowed through:
+  1. **Coordinate convention** — position vectors must stay in ECI; any other frame (RTN, LVLH, perifocal) requires an explicit conversion back at the function boundary.
+  2. **Unit consistency** — no mixing SI and km-based units within a function; new constants must cite units and source.
+  3. **Covariance integrity** — any covariance matrix construction/modification must preserve symmetry and positive semi-definiteness, with eigenvalues clamped to ≥1e-10.
+  4. **Formula provenance** — new or modified physics formulas need a comment citing `docs/physics.md`, a publication, or a named standard (e.g. NASA Standard Breakup Model).
+  5. **Conservation laws** — propagation changes can't silently break energy conservation in the unperturbed two-body case.
+  
+  If a proposed edit to one of those files would violate a rule, the hook returns a `permissionDecision: "ask"`, which pauses the write and surfaces the concern to the user for explicit approval rather than silently applying a physics-breaking change. Edits to unrelated files (docs, dashboard, README) pass through untouched.
+
+**4. Post-task validation (`PostTaskExec`)**
+- `post-task-validation.json` fires after any spec task is marked complete. It imports the five core modules (`orbital_mechanics`, `conjunction`, `avoidance`, `damage_minimization`, `risk_optimizer`) in sequence and prints a pass/fail per module. This catches broken imports, circular dependencies, or syntax errors from an implementation task before moving to the next one — a cheap regression check that runs automatically instead of relying on someone remembering to do it.
+
+**5. Custom strategy integration (`PostFileCreate`)**
+- `strategy-auto-integrator.json` matches `src/strategies/custom_.*\.py$` — the moment a new file matching that pattern is created (see `custom_fuel_efficiency.py`, `custom_relative_velocity.py`), it runs `src/strategy_integrator.py` against the new file to validate and register the strategy automatically, instead of requiring a manual wiring step.
+
+**6. Git workflow (`Stop`)**
+- `smart-git-commit.json` fires when a session ends. Instead of auto-committing, its `agent` action reviews `git status`/`git diff`, drafts a single-line conventional-commit message, and explicitly asks the user for approval before staging and committing anything. Nothing gets committed without a human sign-off.
+
+Together, these hooks mean the physics-safety review, linting, dependency checks, and post-implementation validation happen automatically as a side effect of normal editing — not as separate manual steps someone has to remember to run.
+
+---
 
 ## The Day the Sky Broke
 
@@ -991,6 +1124,88 @@ The real question: can it process 10,000 objects fast enough to matter?
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Why Each Technology Was Chosen
+
+| Layer | Technology | Why this and not something else |
+|---|---|---|
+| Numerics | **NumPy / SciPy** | Vectorized state-vector math (6 x 10,000+ state variables) needs BLAS/LAPACK-backed operations, not Python loops. `scipy.integrate` gives an adaptive RK45/RK78-style ODE solver for propagation; `scipy.optimize` (via `milp`/HiGHS) provides the CPU fallback for the network-flow/MILP path without requiring a GPU. |
+| Graph analysis | **NetworkX** | Conjunctions are naturally a graph (satellites = nodes, risky pairs = edges). `min_cost_flow` gives a provably optimal fuel allocation for free instead of hand-rolling a flow solver. |
+| GPU optimization | **NVIDIA CuOpt** | At 10k+ objects, MILP solve time on CPU (NetworkX/HiGHS) grows into minutes. CuOpt's GPU MILP/VRP solver targets sub-second solves at that scale. `cuopt_client.py` talks its documented wire format and transparently degrades to the local CPU solver when no GPU server is configured, so the repo runs standalone. |
+| AI layer | **OpenAI API / NVIDIA NIM** | Both expose an OpenAI-compatible chat-completions interface, so `ai_analysis.py` can target either without a different client library. Function-calling support is what makes the natural-language `/api/plan` endpoint possible without a bespoke parser. |
+| Web API | **Flask + Flask-CORS** | Lightweight enough to prototype REST endpoints and SSE streaming without an ASGI framework's overhead; CORS middleware is a one-line requirement for a browser dashboard hitting the API from a different origin/port during development. |
+| Production serving | **Gunicorn** | Standard sync WSGI server for a Flask app; worker count is deliberately kept at 1 in this deployment because simulation state lives in-memory (see [Running the System](#running-the-system)). |
+| Visualization | **Three.js** | WebGL-based 3D rendering in-browser with no plugin install, and it comfortably handles the 10k+ object constellation the dashboard needs to render at interactive frame rates. |
+| Language runtime | **Python 3.8+** | Matches the minimum version needed for the typing features and NumPy/SciPy releases the project depends on; also the path of least friction for integrating with C/Fortran-backed scientific libraries if performance-critical sections ever need it. |
+
+### Pinned Dependency Versions & Rationale
+
+| Package | Version constraint | Why this floor |
+|---|---|---|
+| `numpy` | `>=1.24.0` | Performance improvements and better error handling in array operations used throughout state propagation. |
+| `scipy` | `>=1.10.0` | Newer `scipy.integrate` IVP solver interface and improved `scipy.optimize` used for orbit propagation and the MILP fallback. |
+| `matplotlib` | `>=3.7.0` | Better rendering/animation support for the generated trajectory and risk-timeline plots (not required for API-only deployments). |
+| `networkx` | `>=3.0` | Performance and API cleanups in `min_cost_flow` and graph construction used by `risk_optimizer.py`. |
+| `flask` | `>=3.0.0` | Current stable line with performance improvements; async-readiness for future SSE/streaming work. |
+| `flask-cors` | `>=4.0.0` | CORS handling for browser requests from the dashboard during local development. |
+| `openai` | `>=1.0.0` | Stable client API surface, including function-calling, used by `ai_analysis.py`. |
+| `requests` | `>=2.31.0` | HTTP client for the CuOpt REST integration in `cuopt_client.py`. |
+| `gunicorn` | `>=21.2.0` | Production WSGI server for the Render/Gunicorn deployment path. |
+
+### Integration Points
+
+**OpenAI / NVIDIA NIM (LLM analysis)**
+
+```python
+# ai_analysis.py talks to either backend through the same
+# OpenAI-compatible client, selected by which API key is set.
+import openai
+
+openai.api_key = os.getenv("OPENAI_API_KEY") or os.getenv("NVIDIA_API_KEY")
+
+response = openai.ChatCompletion.create(
+    model="gpt-4",  # or nvidia/llama-3.3-nemotron-super-49b-v1 for NIM
+    messages=[
+        {"role": "system", "content": "You are an orbital mechanics expert..."},
+        {"role": "user", "content": f"Analyze this conjunction: {conjunction_data}"}
+    ]
+)
+```
+
+**NVIDIA CuOpt (GPU MILP solver)**
+
+```python
+# cuopt_client.py — same problem_data structure whether it's sent to a
+# self-hosted CuOpt GPU server or solved locally via scipy.optimize.milp
+from src.cuopt_client import CuOptClient
+
+client = CuOptClient(server_ip=os.getenv("CUOPT_SERVER_IP"))
+solution = client.solve_vehicle_routing(
+    conjunctions=flagged_pairs,
+    fuel_budgets=satellite_fuel,
+    time_windows=tca_times
+)
+```
+
+### Optional / Future Dependencies
+
+These aren't installed by default (not in `requirements.txt`) but are the next additions on the [roadmap](#innovation--roadmap):
+
+| Package | Purpose |
+|---|---|
+| `nvidia-nim-client` | Vision-language model access for automatic analysis of generated plots (`orbits_3d.png`, `risk_timeline.png`) |
+| `nvidia-nv-embed` | Embedding model for RAG retrieval over `docs/physics.md` / `docs/strategy.md` |
+| `nemo-guardrails` | Safety/consistency validation layer for LLM output before it reaches an operator |
+| `memory-profiler`, `py-spy` | Profiling tools for memory and CPU hotspots at 10k+ object scale |
+| `mypy`, `types-requests` | Static type checking as the codebase's type-hint coverage grows |
+
+### Deployment Profiles
+
+| Profile | Scale | Command | Resources |
+|---|---|---|---|
+| Single-process (prototype) | <1,000 objects, 7-day horizon | `python -m src.simulation` | 1 CPU core, ~500 MB RAM |
+| Multi-process (scaling) | 1,000-10,000 objects | `gunicorn -w 4 -b 0.0.0.0:8050 src.api:app` | 4 CPU cores, 2-4 GB RAM |
+| GPU-accelerated (large scale) | 10,000+ objects, real-time | CuOpt server + Flask API | 1 NVIDIA GPU (T4/A100+), 8-16 GB VRAM, 1 CPU |
+
 ---
 
 ## Why This Matters
@@ -1064,85 +1279,6 @@ In short: the orbital mechanics and optimization code answer "is there a threat,
 - Atmospheric drag uses a simplified exponential density model, not NRLMSISE-00.
 - Planning horizon is practically capped at ~7 days; uncertainty dominates beyond that.
 - Debris cascade modeling is probabilistic and model-averaged, not per-fragment tracked.
-
----
-
-## How is Kiro Used
-
-This project was built inside [Kiro](https://kiro.dev), and it leans on Kiro's spec, steering, and hook systems rather than just using it as a chat-based code generator. Here's how each piece is actually wired up in `.kiro/`.
-
-| Kiro feature | Where it lives | What it does here |
-|---|---|---|
-| Specs | `.kiro/specs/` (9 features) | Requirements → design → tasks for every physics module and most dashboard features |
-| Steering | `.kiro/steering/` (6 docs) | Always-on architecture/context injected into every session |
-| Hooks | `.kiro/hooks/` (9 hooks) | Lint/format on save, physics safety gate, post-task validation, custom strategy auto-wiring, git commit workflow |
-
-### Specs — structured feature development
-
-Every non-trivial feature in this codebase went through Kiro's spec workflow (`.kiro/specs/`) instead of an ad-hoc prompt-and-hope loop, using the `requirements.md` → `design.md` → `tasks.md` progression. Not every spec carries all three files — the foundational physics specs stopped at `design.md` (implemented directly against a documented design), while later UI-focused specs were scoped with `requirements.md` and `tasks.md` and skipped a separate design doc since the change was small and visual:
-
-```
-.kiro/specs/
-├── orbital-mechanics/              # requirements + design   — core propagation, STM, perturbations
-├── conjunction-assessment/         # requirements + design   — screening, Pc calculation, TCA
-├── avoidance-maneuver-planning/    # requirements + design   — delta-v optimization
-├── simulation-engine/              # requirements + design   — main event loop orchestration
-├── cuopt-intervention-planning/    # requirements + design + tasks — GPU MILP maneuver sequencing
-├── live-bplane-encounter-geometry/ # requirements + tasks    — real-time B-plane visualization
-├── catastrophic-threshold-gauge/   # requirements + tasks    — risk threshold UI component
-├── mark-tca-zone-3d-visualization/ # requirements only       — 3D TCA marker rendering
-└── cuopt-fuel-allocation/          # initialized, not yet written — GPU fuel budget optimization
-```
-
-This matters a lot for a physics-heavy codebase: the `design.md` for `cuopt-intervention-planning` documents the MILP formulation and constraint set *before* a line of `cuopt_client.py` gets touched, and its `tasks.md` breaks that design into checkable implementation steps that Kiro executes and tracks one at a time. `cuopt-fuel-allocation` is an example of a spec that was scaffolded for a follow-on feature (per-satellite fuel budget allocation via MILP) but not carried further yet — left as-is here rather than backfilled, since overstating its status wouldn't reflect what was actually built.
-
-### Steering — always-on project context
-
-Six steering docs in `.kiro/steering/` are injected into every session automatically, so Kiro never has to rediscover the architecture from scratch:
-
-| File | What it encodes |
-|---|---|
-| `project-context.md` | Module map, data structures (spacecraft state, conjunction event, maneuver plan), API contract |
-| `project-roadmap.md` | Phase plan, success metrics, risk register |
-| `architecture-deep-dive.md` | Layered design principles, data flow diagrams, decision algorithm hierarchy |
-| `technical-stack.md` | Dependency rationale, performance characteristics, complexity tables |
-| `development-practices.md` | Module dependency graph, code review checklist for physics vs. API changes |
-| `physics-change-guard.md` | Hard constraints for anything touching orbital mechanics |
-
-Because these are steering files (not one-off chat context), they stay consistent across every session and every contributor using Kiro on this repo, instead of each person re-explaining the architecture in their own words.
-
-### Hooks — the automation layer
-
-This is the part worth calling out in detail. `.kiro/hooks/` has 9 hook definitions, each a JSON file Kiro reads and executes directly with no manual triggering required. They cover several different concerns:
-
-**1. Session context injection (`SessionStart`)**
-- `project-context-injection.json` and `development-practices-injection.json` fire the moment a new Kiro session opens and inject the architecture map and coding conventions straight into context via an `agent` action. This is what makes the steering docs above actually *active* rather than just reference material sitting in a folder — every session starts already knowing the module dependency graph, coordinate conventions, and debugging playbooks.
-
-**2. Code quality automation (`PostFileSave` / `PostFileCreate`)**
-- `lint-on-save.json` — matches `\.py$`, runs `ruff check --fix` on every Python file the moment it's saved.
-- `format-on-create.json` — matches `\.py$`, runs `ruff format` on brand new Python files right after creation, so nothing lands unformatted.
-- `dependency-check.json` — matches `requirements\.txt$`, runs `pip check` whenever the requirements file changes, catching dependency conflicts (e.g. NumPy/SciPy version clashes) immediately instead of at install time.
-
-**3. Physics safety gate (`PreToolUse`)** — the most interesting one
-- `physics-safety-gate.json` matches on the tool name (`fs_write|str_replace`) and fires *before* any write tool runs. Its `agent` action instructs Kiro to check whether the target is a physics-critical file (`orbital_mechanics.py`, `conjunction.py`, `damage_minimization.py`) and, if so, enforce five rules before the write is allowed through:
-  1. **Coordinate convention** — position vectors must stay in ECI; any other frame (RTN, LVLH, perifocal) requires an explicit conversion back at the function boundary.
-  2. **Unit consistency** — no mixing SI and km-based units within a function; new constants must cite units and source.
-  3. **Covariance integrity** — any covariance matrix construction/modification must preserve symmetry and positive semi-definiteness, with eigenvalues clamped to ≥1e-10.
-  4. **Formula provenance** — new or modified physics formulas need a comment citing `docs/physics.md`, a publication, or a named standard (e.g. NASA Standard Breakup Model).
-  5. **Conservation laws** — propagation changes can't silently break energy conservation in the unperturbed two-body case.
-  
-  If a proposed edit to one of those files would violate a rule, the hook returns a `permissionDecision: "ask"`, which pauses the write and surfaces the concern to the user for explicit approval rather than silently applying a physics-breaking change. Edits to unrelated files (docs, dashboard, README) pass through untouched.
-
-**4. Post-task validation (`PostTaskExec`)**
-- `post-task-validation.json` fires after any spec task is marked complete. It imports the five core modules (`orbital_mechanics`, `conjunction`, `avoidance`, `damage_minimization`, `risk_optimizer`) in sequence and prints a pass/fail per module. This catches broken imports, circular dependencies, or syntax errors from an implementation task before moving to the next one — a cheap regression check that runs automatically instead of relying on someone remembering to do it.
-
-**5. Custom strategy integration (`PostFileCreate`)**
-- `strategy-auto-integrator.json` matches `src/strategies/custom_.*\.py$` — the moment a new file matching that pattern is created (see `custom_fuel_efficiency.py`, `custom_relative_velocity.py`), it runs `src/strategy_integrator.py` against the new file to validate and register the strategy automatically, instead of requiring a manual wiring step.
-
-**6. Git workflow (`Stop`)**
-- `smart-git-commit.json` fires when a session ends. Instead of auto-committing, its `agent` action reviews `git status`/`git diff`, drafts a single-line conventional-commit message, and explicitly asks the user for approval before staging and committing anything. Nothing gets committed without a human sign-off.
-
-Together, these hooks mean the physics-safety review, linting, dependency checks, and post-implementation validation happen automatically as a side effect of normal editing — not as separate manual steps someone has to remember to run.
 
 ---
 

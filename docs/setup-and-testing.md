@@ -33,6 +33,7 @@ pip install -r requirements.txt
 | openai | >=1.0.0 | LLM-powered analysis |
 | requests | >=2.31.0 | HTTP client for CuOpt API |
 | gunicorn | >=21.2.0 | Production WSGI server |
+| markdown | >=3.5.0 | Renders README/docs/*.md as HTML for the `/docs` hub |
 
 ## Running the System
 

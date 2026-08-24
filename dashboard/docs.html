@@ -573,6 +573,7 @@
             <a href="/science.html" style="color:#8b9cc0;text-decoration:none;font-size:0.8rem;padding:6px 14px;border-radius:6px;border:1px solid #1e2a42;transition:all 0.2s;">Science</a>
             <a href="/architecture.html" style="color:#8b9cc0;text-decoration:none;font-size:0.8rem;padding:6px 14px;border-radius:6px;border:1px solid #1e2a42;transition:all 0.2s;">Architecture</a>
             <a href="/docs.html" style="color:#00d4ff;text-decoration:none;font-size:0.8rem;padding:6px 14px;border-radius:6px;border:1px solid #00d4ff;background:rgba(0,212,255,0.06);">Physics</a>
+            <a href="/docs" style="color:#8b9cc0;text-decoration:none;font-size:0.8rem;padding:6px 14px;border-radius:6px;border:1px solid #1e2a42;transition:all 0.2s;">Docs Hub</a>
         </div>
     </nav>
     <div class="container">
@@ -595,7 +596,8 @@
 
         <!-- Navigation -->
         <nav class="nav">
-            <button class="nav-btn active" onclick="showSection('overview')">Overview</button>
+            <button class="nav-btn active" onclick="showSection('mission')">The Problem</button>
+            <button class="nav-btn" onclick="showSection('overview')">System Overview</button>
             <button class="nav-btn" onclick="showSection('orbital')">Orbital Mechanics</button>
             <button class="nav-btn" onclick="showSection('conjunction')">Conjunction Assessment</button>
             <button class="nav-btn" onclick="showSection('avoidance')">Avoidance Planning</button>
@@ -605,9 +607,133 @@
         </nav>
 
         <!-- ============================================================ -->
+        <!-- THE PROBLEM / MISSION SECTION -->
+        <!-- ============================================================ -->
+        <section id="mission" class="section active">
+            <h2 class="section-title">
+                <span class="icon" style="background:rgba(239,68,68,0.15)">&#128680;</span>
+                The Problem: Low Earth Orbit Has No Traffic Laws
+            </h2>
+            <p class="section-desc">
+                ~10,000 active satellites circle Earth at roughly 28,000 km/h. No lanes, no traffic lights,
+                no brakes &mdash; and when two of them meet, they don't just crash. They shatter, and the
+                fragments become the next threat.
+            </p>
+
+            <div class="card card-full" style="margin-bottom:1.5rem">
+                <div class="card-header">
+                    <div class="card-icon red">&#9889;</div>
+                    <div class="card-title">Kessler Syndrome &mdash; The Cascade Nobody Can Undo</div>
+                </div>
+                <div class="card-body">
+                    <p>A single collision between two satellites produces thousands of new fragments, each traveling fast enough to destroy something else. One collision creates more threats. Those threats create more collisions. Left unmanaged, certain orbital shells become permanently unusable &mdash; a scenario first proposed by NASA scientist Donald Kessler in 1978.</p>
+                    <p>Avoiding this isn't as simple as "something is coming, move." Every spacecraft has to answer four questions before it burns fuel:</p>
+                    <table class="data-table">
+                        <tr><th>Question</th><th>Why it's hard</th></tr>
+                        <tr><td>How much should I move?</td><td>Too little wastes the maneuver; too much wastes irreplaceable fuel</td></tr>
+                        <tr><td>When should I move?</td><td>Earlier burns are cheaper, but the risk assessment is less certain</td></tr>
+                        <tr><td>Will this maneuver create another collision later?</td><td>Dodging one object can put you in the path of a different one</td></tr>
+                        <tr><td>Is the fuel worth spending?</td><td>Fuel spent today isn't available for a bigger threat next week</td></tr>
+                    </table>
+                    <p style="margin-top:1rem">Today, these decisions can require hours of human analysis per conjunction. That doesn't scale past a few thousand satellites &mdash; let alone the 100,000+ objects the industry is heading toward.</p>
+                </div>
+            </div>
+
+            <h3 style="margin:2rem 0 1rem;font-size:1.1rem;color:var(--text-primary)">The Four Constraints Every Decision Faces</h3>
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange">&#9203;</div>
+                        <div class="card-title">1. Time</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Conjunctions may be hours to days out, but human decision loops take hours themselves. At 14.2 km/s relative velocity, a 47-meter miss distance corresponds to roughly 3 milliseconds of timing error. There's no time for a meeting.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon cyan">&#9981;</div>
+                        <div class="card-title">2. Fuel</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Every maneuver consumes a finite, lifetime resource &mdash; typically 20-60 m/s of &Delta;v for the entire mission. A bad decision today can shorten a satellite's operational life by years. There's no refueling mid-mission.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon purple">&#128279;</div>
+                        <div class="card-title">3. Coupling</div>
+                    </div>
+                    <div class="card-body">
+                        <p>Moving satellite A away from satellite B might put it closer to satellite C tomorrow. Conjunctions can't be optimized one at a time &mdash; the entire orbital environment has to be considered simultaneously.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon green">&#128225;</div>
+                        <div class="card-title">4. Connectivity</div>
+                    </div>
+                    <div class="card-body">
+                        <p>A satellite isn't always in view of a ground station. If a threat appears mid-pass over the Pacific, it can wait up to ~90 minutes &mdash; a full orbital period &mdash; before it can even start a conversation with its operator. It needs reflexes of its own.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-full" style="margin-top:1.5rem">
+                <div class="card-header">
+                    <div class="card-icon blue">&#128752;</div>
+                    <div class="card-title">Our Solution: Plan Around Collisions, Not Just React to Them</div>
+                </div>
+                <div class="card-body">
+                    <p>Orbital does in seconds what currently takes hours. The physics engine propagates every trajectory forward using J2 perturbations, atmospheric drag, and solar radiation pressure &mdash; and propagates the <em>uncertainty</em> in that trajectory too, because knowing where a satellite should be isn't enough; we need to know how wrong we might be.</p>
+                    <p>Millions of candidate pairs are screened with fast geometric filters, and high-fidelity collision-risk math runs only on the handful of pairs that matter (see Conjunction Assessment below).</p>
+                    <p>The key difference: <strong>we don't optimize one collision at a time &mdash; we optimize the entire threat network.</strong> Three strategies are compared for every decision:</p>
+                    <ul style="list-style:none;padding:0;margin:0.75rem 0">
+                        <li style="padding:0.3rem 0">&#8226; <strong>Greedy optimization</strong> &mdash; resolve the highest-risk conjunction first, for immediate threats</li>
+                        <li style="padding:0.3rem 0">&#8226; <strong>Network flow optimization</strong> &mdash; fuel-optimal allocation across the whole constellation</li>
+                        <li style="padding:0.3rem 0">&#8226; <strong>Monte Carlo Tree Search</strong> &mdash; 7-day lookahead across sequential maneuver decisions</li>
+                    </ul>
+                    <p>So instead of asking "how do I avoid this collision," the system asks: <strong>"what decision leaves me safest over the next seven days?"</strong></p>
+                </div>
+            </div>
+
+            <div class="card card-full" style="margin-top:1.5rem">
+                <div class="card-header">
+                    <div class="card-icon red">&#128165;</div>
+                    <div class="card-title">And Sometimes You Can't Dodge</div>
+                </div>
+                <div class="card-body">
+                    <p>Sometimes the warning comes too late. Sometimes there's no fuel left. Sometimes the other object is uncontrollable debris. When avoidance isn't possible, the system switches from <strong>avoidance to damage mitigation</strong> &mdash; evaluating outcomes and selecting the scenario that minimizes downstream debris risk (see Damage Minimization below).</p>
+                    <p>Even when physics wins, the damage can still be minimized.</p>
+                </div>
+            </div>
+
+            <h3 style="margin:2rem 0 1rem;font-size:1.1rem;color:var(--text-primary)">Why This Matters Now</h3>
+            <div class="stats-row">
+                <div class="stat-card"><div class="stat-value">10k+</div><div class="stat-label">Active Satellites Today</div></div>
+                <div class="stat-card"><div class="stat-value">100k+</div><div class="stat-label">Projected Objects, Coming Years</div></div>
+                <div class="stat-card"><div class="stat-value">~355k</div><div class="stat-label">Starlink Avoidance Maneuvers / Yr</div></div>
+                <div class="stat-card"><div class="stat-value">$22-29B</div><div class="stat-label">Space Traffic Mgmt Market by 2030</div></div>
+            </div>
+            <div class="card card-full">
+                <div class="card-body">
+                    <p>SpaceX alone reported roughly 355,000 Starlink collision-avoidance maneuvers over a recent 12-month period &mdash; nearly triple the prior year's volume &mdash; as the constellation has grown. Amazon (Kuiper), OneWeb, Telesat, and Planet are all adding spacecraft, and the industry is heading toward 100,000+ tracked objects. Market analysts project the space traffic management sector to reach roughly $22-29 billion by 2030 (estimates vary by report), up from roughly $12-18 billion today.</p>
+                    <p>But the infrastructure managing that traffic wasn't designed for this scale &mdash; conjunction screening still leans heavily on human operators and ground-based systems. That's like asking one air-traffic controller to manage every airport on Earth.</p>
+                    <p style="margin-top:0.75rem">In 2009, Iridium 33 and the defunct Cosmos 2251 collided at roughly 11.7 km/s over Siberia &mdash; with no warning, no maneuver, and no dodge &mdash; creating over 2,000 pieces of trackable debris that are still being tracked today. Every satellite in orbit is one missed decision away from the same outcome. Tomorrow, with far more objects, the margin for error gets far smaller.</p>
+                    <p style="margin-top:0.75rem;font-size:0.78rem;color:var(--text-muted)">
+                        Sources:
+                        <a href="https://www.space.com/space-exploration/satellites/every-spacex-starlink-satellite-has-to-dodge-a-collision-almost-weekly-and-experts-fear-the-worst" style="color:var(--accent-cyan)" target="_blank" rel="noopener">Space.com, Starlink maneuver reporting</a>,
+                        <a href="https://natlawreview.com/press-releases/space-traffic-management-market-generate-224-billion-2030-allied-market" style="color:var(--accent-cyan)" target="_blank" rel="noopener">Allied Market Research, STM forecast</a>,
+                        <a href="https://www.gminsights.com/industry-analysis/space-traffic-management-stm-market" style="color:var(--accent-cyan)" target="_blank" rel="noopener">Global Market Insights, STM market size</a>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
         <!-- OVERVIEW SECTION -->
         <!-- ============================================================ -->
-        <section id="overview" class="section active">
+        <section id="overview" class="section">
             <h2 class="section-title">
                 <span class="icon" style="background:var(--glow-blue)">&#128752;</span>
                 System Architecture

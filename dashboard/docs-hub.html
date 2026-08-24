@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docs Hub — Orbital Sentinel</title>
+    <meta name="description" content="Every piece of documentation for the AI Satellite Collision Prevention System, filed under one roof (well, one shot glass of fuel).">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2235;
+            --bg-card-hover: #1e2a42;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #8b5cf6;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-pink: #ff3d8b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e293b;
+            --glow-blue: rgba(59, 130, 246, 0.15);
+            --glow-cyan: rgba(6, 182, 212, 0.15);
+            --glow-purple: rgba(139, 92, 246, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .bg-grid {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image:
+                radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 90%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        nav.topnav {
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(10,14,23,0.92);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid #1e2a42;
+            padding: 14px 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        nav.topnav .brand {
+            font-size: 0.9rem; font-weight: 700; letter-spacing: 3px;
+            background: linear-gradient(135deg,#00d4ff,#7b2ff7);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+
+        nav.topnav .links { display: flex; gap: 8px; }
+
+        nav.topnav .links a {
+            color: #8b9cc0; text-decoration: none; font-size: 0.8rem;
+            padding: 6px 14px; border-radius: 6px; border: 1px solid #1e2a42;
+            transition: all 0.2s;
+        }
+        nav.topnav .links a:hover { border-color: #00d4ff; color: #00d4ff; }
+        nav.topnav .links a.on {
+            color: #00d4ff; border-color: #00d4ff; background: rgba(0,212,255,0.06);
+        }
+
+        .container {
+            position: relative; z-index: 1;
+            max-width: 1300px; margin: 0 auto; padding: 3rem 2rem 5rem;
+        }
+
+        .header { text-align: center; padding: 1rem 0 3rem; position: relative; }
+
+        .header .kicker {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem; letter-spacing: 3px; text-transform: uppercase;
+            color: var(--accent-cyan); margin-bottom: 1rem;
+        }
+
+        .header h1 {
+            font-size: clamp(2rem, 4.5vw, 2.9rem);
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem; letter-spacing: -0.5px;
+        }
+
+        .header .subtitle {
+            font-size: 1.05rem; color: var(--text-secondary);
+            max-width: 700px; margin: 0 auto 0.5rem;
+        }
+
+        .header .quip {
+            font-size: 0.9rem; color: var(--text-muted); font-style: italic;
+            max-width: 640px; margin: 0.75rem auto 0;
+        }
+
+        .search-box {
+            max-width: 480px; margin: 2rem auto 0; position: relative;
+        }
+        .search-box input {
+            width: 100%; padding: 0.8rem 1rem 0.8rem 2.6rem;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; color: var(--text-primary); font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .search-box input:focus { outline: none; border-color: var(--accent-cyan); }
+        .search-box::before {
+            content: '\1F50D'; position: absolute; left: 1rem; top: 50%;
+            transform: translateY(-50%); opacity: 0.5; font-size: 0.9rem;
+        }
+
+        .section-title {
+            font-size: 1.3rem; font-weight: 700;
+            margin: 3rem 0 0.4rem;
+            display: flex; align-items: center; gap: 0.65rem;
+        }
+        .section-title .icon {
+            width: 32px; height: 32px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center; font-size: 1.05rem;
+        }
+        .section-desc {
+            color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 1.5rem; max-width: 800px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .doc-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 14px; padding: 1.4rem; text-decoration: none;
+            color: inherit; display: block; position: relative; overflow: hidden;
+            transition: all 0.25s;
+        }
+        .doc-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+            opacity: 0; transition: opacity 0.25s;
+        }
+        .doc-card:hover {
+            border-color: rgba(59,130,246,0.35);
+            background: var(--bg-card-hover);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        }
+        .doc-card:hover::before { opacity: 1; }
+
+        .doc-card .card-top {
+            display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;
+            margin-bottom: 0.85rem;
+        }
+        .doc-card .card-icon {
+            width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+        }
+        .doc-card .card-icon.blue { background: var(--glow-blue); color: var(--accent-blue); }
+        .doc-card .card-icon.cyan { background: var(--glow-cyan); color: var(--accent-cyan); }
+        .doc-card .card-icon.purple { background: var(--glow-purple); color: var(--accent-purple); }
+        .doc-card .card-icon.green { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+        .doc-card .card-icon.orange { background: rgba(245,158,11,0.15); color: var(--accent-orange); }
+        .doc-card .card-icon.red { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+        .doc-card .card-icon.pink { background: rgba(255,61,139,0.15); color: var(--accent-pink); }
+
+        .doc-card .tag {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
+            letter-spacing: 0.5px; text-transform: uppercase;
+            padding: 3px 8px; border-radius: 5px;
+            border: 1px solid var(--border); color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .doc-card .card-title {
+            font-size: 1.02rem; font-weight: 700; margin-bottom: 0.4rem;
+        }
+
+        .doc-card .card-body {
+            color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.9rem;
+        }
+
+        .doc-card .card-foot {
+            display: flex; align-items: center; justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+            color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 0.75rem;
+        }
+        .doc-card .card-foot .arrow { color: var(--accent-cyan); transition: transform 0.2s; }
+        .doc-card:hover .card-foot .arrow { transform: translateX(3px); }
+
+        .doc-card.featured {
+            grid-column: span 2;
+            background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08));
+            border-color: rgba(59,130,246,0.3);
+        }
+        @media (max-width: 700px) {
+            .doc-card.featured { grid-column: span 1; }
+        }
+
+        .footer-note {
+            margin-top: 4rem; text-align: center; color: var(--text-muted);
+            font-size: 0.82rem; padding-top: 2rem; border-top: 1px solid var(--border);
+        }
+        .footer-note a { color: var(--accent-cyan); text-decoration: none; }
+        .footer-note a:hover { text-decoration: underline; }
+
+        .hidden-by-search { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+
+    <nav class="topnav">
+        <div class="brand">ORBIT SENTINEL</div>
+        <div class="links">
+            <a href="/">Dashboard</a>
+            <a href="/maneuver-viz.html">Maneuvers</a>
+            <a href="/science.html">Science</a>
+            <a href="/architecture.html">Architecture</a>
+            <a href="/docs.html">Physics</a>
+            <a href="/docs" class="on">Docs Hub</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="header">
+            <div class="kicker">&#128640; Mission Documentation Control</div>
+            <h1>The Docs Hub</h1>
+            <p class="subtitle">
+                Every README, physics reference, strategy doc, and architecture deep-dive
+                for this satellite collision prevention system — filed, tagged, and (mostly) readable without a PhD.
+            </p>
+            <p class="quip">
+                Somewhere up there, 10,000+ satellites are relying on this math being right.
+                No pressure. Read on.
+            </p>
+            <div class="search-box">
+                <input type="text" id="docSearch" placeholder="Search docs (e.g. &quot;Pc&quot;, &quot;Kessler&quot;, &quot;API&quot;)..." oninput="filterDocs()">
+            </div>
+        </header>
+
+        <!-- ============================================================ -->
+        <!-- GETTING STARTED -->
+        <!-- ============================================================ -->
+        <h2 class="section-title">
+            <span class="icon" style="background:var(--glow-blue)">&#128218;</span>
+            Getting Started
+        </h2>
+        <p class="section-desc">Start here. These cover what the system does, why it exists, and how to run it on your machine.</p>
+        <div class="card-grid" id="grid-start">
+            <a class="doc-card featured" href="/docs/view/README.md" data-title="README overview index demo kessler syndrome">
+                <div class="card-top">
+                    <div class="card-icon blue">&#127760;</div>
+                    <span class="tag">Start here</span>
+                </div>
+                <div class="card-title">README — Project Overview</div>
+                <div class="card-body">
+                    The full story: the Iridium-Cosmos collision that inspired this, what the system does,
+                    architecture, API reference, quick start, and the AI opportunities roadmap. If you read one doc, read this one.
+                </div>
+                <div class="card-foot"><span>README.md</span><span class="arrow">Read &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/docs/view/docs/setup-and-testing.md" data-title="setup testing installation environment variables troubleshooting">
+                <div class="card-top">
+                    <div class="card-icon green">&#9881;&#65039;</div>
+                    <span class="tag">Setup</span>
+                </div>
+                <div class="card-title">Setup &amp; Testing Notes</div>
+                <div class="card-body">
+                    Installation steps, dependency summary, environment variables, running the test suite,
+                    and a troubleshooting table for the usual suspects (port conflicts, missing keys, CORS).
+                </div>
+                <div class="card-foot"><span>docs/setup-and-testing.md</span><span class="arrow">Read &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/docs/view/docs/content.md" data-title="intuitive explanation everyday analogy falling missing orbit plain english">
+                <div class="card-top">
+                    <div class="card-icon cyan">&#128161;</div>
+                    <span class="tag">Plain English</span>
+                </div>
+                <div class="card-title">The Intuitive Guide</div>
+                <div class="card-body">
+                    No equations required (well, a few). Explains orbits, conjunctions, and avoidance maneuvers
+                    using analogies like highway merges and steering a ship — module by module.
+                </div>
+                <div class="card-foot"><span>docs/content.md</span><span class="arrow">Read &rarr;</span></div>
+            </a>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PHYSICS & STRATEGY -->
+        <!-- ============================================================ -->
+        <h2 class="section-title">
+            <span class="icon" style="background:rgba(239,68,68,0.15)">&#128171;</span>
+            Physics &amp; Strategy References
+        </h2>
+        <p class="section-desc">The math and the decision framework — for when "trust me" isn't a good enough answer.</p>
+        <div class="card-grid" id="grid-physics">
+            <a class="doc-card" href="/docs/view/docs/physics.md" data-title="physics orbital mechanics equations two body problem covariance stm probability of collision breakup model">
+                <div class="card-top">
+                    <div class="card-icon red">&#128171;</div>
+                    <span class="tag">Reference</span>
+                </div>
+                <div class="card-title">Orbital Mechanics Physics Reference</div>
+                <div class="card-body">
+                    Two-body motion, J2/drag/SRP perturbations, TCA and Pc derivations, State Transition Matrix
+                    propagation, the NASA breakup model, and the Kessler syndrome stability condition.
+                </div>
+                <div class="card-foot"><span>docs/physics.md</span><span class="arrow">Read &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/docs/view/docs/strategy.md" data-title="strategy decision framework maneuver logic greedy network flow reinforcement learning">
+                <div class="card-top">
+                    <div class="card-icon orange">&#129504;</div>
+                    <span class="tag">Reference</span>
+                </div>
+                <div class="card-title">Intervention Strategy &amp; Decision Framework</div>
+                <div class="card-body">
+                    The decision hierarchy from detection to mitigation, risk scoring formulas, the maneuver
+                    cost-benefit rule, and the reinforcement-learning formulation for future autonomy.
+                </div>
+                <div class="card-foot"><span>docs/strategy.md</span><span class="arrow">Read &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/docs.html" data-title="interactive physics katex latex formulas visual reference">
+                <div class="card-top">
+                    <div class="card-icon purple">&#128202;</div>
+                    <span class="tag">Interactive</span>
+                </div>
+                <div class="card-title">Interactive Physics Reference</div>
+                <div class="card-body">
+                    Same physics, rendered with live LaTeX formulas, formula showcases, and decision trees
+                    you can click through instead of scroll through.
+                </div>
+                <div class="card-foot"><span>/docs.html</span><span class="arrow">Open &rarr;</span></div>
+            </a>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- SYSTEM & ARCHITECTURE -->
+        <!-- ============================================================ -->
+        <h2 class="section-title">
+            <span class="icon" style="background:var(--glow-purple)">&#127959;&#65039;</span>
+            System &amp; Architecture
+        </h2>
+        <p class="section-desc">How the modules fit together, data flows end-to-end, and the API contract the dashboard talks to.</p>
+        <div class="card-grid" id="grid-architecture">
+            <a class="doc-card" href="/architecture.html" data-title="architecture design system deep dive modules pipeline optimization strategies">
+                <div class="card-top">
+                    <div class="card-icon purple">&#127959;&#65039;</div>
+                    <span class="tag">Interactive</span>
+                </div>
+                <div class="card-title">Architecture Deep Dive</div>
+                <div class="card-body">
+                    Module map, data flow diagrams (detection &rarr; planning &rarr; mitigation), optimization
+                    strategy comparisons (Greedy vs. Network Flow vs. MCTS vs. CuOpt), and the API contract.
+                </div>
+                <div class="card-foot"><span>/architecture.html</span><span class="arrow">Open &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/science.html" data-title="science methodology operator explainer physics depth">
+                <div class="card-top">
+                    <div class="card-icon cyan">&#128300;</div>
+                    <span class="tag">Interactive</span>
+                </div>
+                <div class="card-title">Science Explainer</div>
+                <div class="card-body">
+                    Physics methodology written for operators who want depth without wading through source code.
+                </div>
+                <div class="card-foot"><span>/science.html</span><span class="arrow">Open &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/docs/view/README.md#api-reference" data-title="api reference endpoints risk conjunctions maneuvers shells debris json contract">
+                <div class="card-top">
+                    <div class="card-icon green">&#128268;</div>
+                    <span class="tag">API</span>
+                </div>
+                <div class="card-title">API Reference</div>
+                <div class="card-body">
+                    All REST endpoints (<code>/api/risk</code>, <code>/api/conjunctions</code>, <code>/api/maneuvers</code>,
+                    <code>/api/shells</code>, <code>/api/plan</code>, <code>/api/decision-engine</code>) with response shapes.
+                </div>
+                <div class="card-foot"><span>README.md &sect; API Reference</span><span class="arrow">Read &rarr;</span></div>
+            </a>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- DASHBOARD PAGES -->
+        <!-- ============================================================ -->
+        <h2 class="section-title">
+            <span class="icon" style="background:rgba(16,185,129,0.15)">&#128225;</span>
+            Live Dashboard Pages
+        </h2>
+        <p class="section-desc">Not documentation exactly — but if you're here for the docs, you'll want the actual mission control too.</p>
+        <div class="card-grid" id="grid-dashboard">
+            <a class="doc-card" href="/" data-title="dashboard main risk overview live">
+                <div class="card-top">
+                    <div class="card-icon blue">&#128225;</div>
+                    <span class="tag">Live</span>
+                </div>
+                <div class="card-title">Main Dashboard</div>
+                <div class="card-body">Risk overview, active threats, and maneuver recommendations in real time.</div>
+                <div class="card-foot"><span>/</span><span class="arrow">Open &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/viz.html" data-title="3d orbital visualization three.js webgl constellation">
+                <div class="card-top">
+                    <div class="card-icon cyan">&#127760;</div>
+                    <span class="tag">Live</span>
+                </div>
+                <div class="card-title">3D Orbital Visualization</div>
+                <div class="card-body">Three.js WebGL rendering of the full tracked constellation.</div>
+                <div class="card-foot"><span>/viz.html</span><span class="arrow">Open &rarr;</span></div>
+            </a>
+            <a class="doc-card" href="/maneuver-viz.html" data-title="maneuver visualization animated collision scenarios b-plane geometry">
+                <div class="card-top">
+                    <div class="card-icon orange">&#128640;</div>
+                    <span class="tag">Live</span>
+                </div>
+                <div class="card-title">Maneuver Visualization</div>
+                <div class="card-body">Animated collision scenarios with B-plane encounter geometry.</div>
+                <div class="card-foot"><span>/maneuver-viz.html</span><span class="arrow">Open &rarr;</span></div>
+            </a>
+        </div>
+
+        <p class="footer-note">
+            Missing something? Docs live in <code>docs/</code> and render straight from source, so anything added there
+            shows up here too — no build step, just good old <a href="/docs/view/docs/setup-and-testing.md">Markdown</a>.
+            &mdash; Orbit Sentinel Docs Hub
+        </p>
+    </div>
+
+    <script>
+        function filterDocs() {
+            const q = document.getElementById('docSearch').value.trim().toLowerCase();
+            document.querySelectorAll('.doc-card').forEach(card => {
+                const haystack = (card.dataset.title || '') + ' ' + card.textContent.toLowerCase();
+                const match = !q || haystack.toLowerCase().includes(q);
+                card.classList.toggle('hidden-by-search', !match);
+            });
+        }
+    </script>
+</body>
+</html>

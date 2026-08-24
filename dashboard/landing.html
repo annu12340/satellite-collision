@@ -129,16 +129,37 @@ b{font-weight:700;}
 }
 #dots button.active{background:var(--blue);border-color:var(--blue);box-shadow:0 0 10px var(--blue);transform:scale(1.3);}
 
-#dashboardLink{
+#topNav{
   position:fixed;top:22px;right:26px;z-index:45;
-  display:flex;align-items:center;gap:8px;
-  font-family:'Inter',sans-serif;font-weight:600;font-size:.8rem;color:#fff;
-  text-decoration:none;padding:9px 18px;border-radius:100px;
-  background:var(--grad-main);box-shadow:0 6px 20px rgba(0,212,255,0.35);
-  transition:transform .2s, box-shadow .2s;
+  display:flex;align-items:center;gap:10px;
 }
-#dashboardLink:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,212,255,0.5);}
-#dashboardLink .glow-dot{width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 8px #fff;animation:pulse 2s ease-in-out infinite;}
+#dashboardLink{
+  display:flex;align-items:center;gap:9px;
+  font-family:'JetBrains Mono',monospace;font-weight:600;font-size:.72rem;
+  letter-spacing:1.5px;text-transform:uppercase;color:var(--cyan);
+  text-decoration:none;padding:9px 16px;border-radius:4px;
+  background:rgba(6,255,208,.06);border:1px solid var(--cyan);
+  box-shadow:0 0 0 rgba(6,255,208,0);
+  transition:background .25s, box-shadow .25s, color .25s, transform .2s;
+}
+#dashboardLink::before{content:'>';opacity:.7;}
+#dashboardLink:hover{
+  background:rgba(6,255,208,.14);color:#fff;
+  box-shadow:0 0 18px rgba(6,255,208,.45);transform:translateY(-1px);
+}
+#dashboardLink .glow-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pulse 2s ease-in-out infinite;}
+#dashboardLink:hover .glow-dot{background:#fff;box-shadow:0 0 8px #fff;}
+
+#githubLink{
+  display:flex;align-items:center;gap:7px;
+  font-family:'JetBrains Mono',monospace;font-weight:600;font-size:.72rem;
+  letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim);
+  text-decoration:none;padding:9px 14px;border-radius:4px;
+  background:transparent;border:1px solid var(--border);
+  transition:background .25s, border-color .25s, color .25s, transform .2s;
+}
+#githubLink svg{width:14px;height:14px;fill:currentColor;flex:0 0 auto;}
+#githubLink:hover{color:#fff;border-color:var(--text-dim);background:rgba(255,255,255,.05);transform:translateY(-1px);}
 
 #navhint{
   position:fixed;bottom:26px;right:28px;z-index:40;
@@ -221,6 +242,7 @@ h2.title{
 @keyframes riseIn{from{opacity:0;transform:translateY(22px);}to{opacity:1;transform:translateY(0);}}
 
 p.lead{font-size:clamp(1rem,1.55vw,1.24rem);color:var(--text-dim);line-height:1.68;max-width:700px;opacity:0;}
+p.lead + p.lead{margin-top:14px;}
 p.lead b{color:var(--text);}
 .slide.active p.lead{animation:riseIn .6s .3s cubic-bezier(.22,1,.36,1) forwards;}
 .tagline{font-size:clamp(1.02rem,1.7vw,1.32rem);color:var(--text-dim);margin-top:10px;font-weight:400;min-height:1.6em;}
@@ -439,6 +461,10 @@ p.lead b{color:var(--text);}
   #brand .meta{display:none;}
   #dots{right:14px;gap:11px;}
   .sticky{display:none;}
+  #topNav{gap:6px;}
+  #githubLink{padding:9px 10px;}
+  #githubLink .gh-label{display:none;}
+  #dashboardLink{padding:9px 12px;font-size:.62rem;}
 }
 
 /* short viewports: tighten everything before it has to scroll */
@@ -489,7 +515,13 @@ html,body{height:auto;overflow:auto;}
 
 <div id="progress"></div>
 <div id="brand"><span class="dot"></span> TRANSMISSION LOG <span class="meta">// UNIT-7 &middot; LEO 547KM</span> <span class="bars"><span></span><span></span><span></span><span></span></span></div>
-<a id="dashboardLink" href="index.html"><span class="glow-dot"></span> Open Live Dashboard</a>
+<div id="topNav">
+  <a id="githubLink" href="https://github.com/annu12340/satellite-collision" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+    <span class="gh-label">GitHub</span>
+  </a>
+  <a id="dashboardLink" href="index.html"><span class="glow-dot"></span> Open Live Dashboard</a>
+</div>
 
 <div id="vitals">
   <div class="vtitle"><span>MY VITALS</span><span class="live">&#9679; LIVE</span></div>
@@ -557,7 +589,11 @@ html,body{height:auto;overflow:auto;}
       <div class="chapnum">00</div>
       <div class="eyebrow">Where I Live</div>
       <h2 class="title">Nobody warned me about the traffic</h2>
-      <p class="lead">I share this neighborhood with <b>10,000+</b> tracked objects big enough to end me &mdash; plus a few hundred thousand too small for anyone to see coming. None of us have brakes. None of us have turn signals. None of us have ever said sorry. We're all doing about <b>28,000&nbsp;km/h</b>, and my entire fuel budget for my <b>whole life</b> would barely fill a shot glass. If someone clips me up here, I don't dent &mdash; I confetti. And then my confetti threatens everyone else's confetti. Forever.</p>
+      <p class="lead">I share this neighborhood with <b>10,000+</b> tracked objects big enough to end me &mdash; plus a few hundred thousand too small for anyone to see coming.</p>
+      <p class="lead">None of us have brakes. None of us have turn signals. None of us have ever said sorry.</p>
+      <p class="lead">We're all doing about <b>28,000&nbsp;km/h</b>, and my entire fuel budget for my <b>whole life</b> would barely fill a shot glass.</p>
+      <p class="lead">If someone clips me up here, I don't dent &mdash; I confetti. And then my confetti threatens everyone else's confetti.</p>
+      <p class="lead">Forever.</p>
       <div class="stat-row">
         <div class="stat-pill"><div class="num">10,000+</div><div class="lbl">Tracked Roommates</div></div>
         <div class="stat-pill"><div class="num">15 km/s</div><div class="lbl">Combined Closing Speed</div></div>
@@ -575,7 +611,11 @@ html,body{height:auto;overflow:auto;}
         <div class="chapnum">01</div>
         <div class="eyebrow">Chapter 1 &mdash; orbital_mechanics.py</div>
         <h2 class="title">A secret nobody tells you about orbit</h2>
-        <p class="lead">I'm not "flying." I'm <b>falling</b> &mdash; sideways, fast enough that I keep missing the ground, forever. That's the whole trick. Meanwhile Earth's lumpy equator keeps tugging at me sideways, sunlight leans on me like a slow-motion bully, and thin wisps of leftover atmosphere quietly sand down my orbit. My operators are never <i>quite</i> sure exactly where I am, either. Comforting.</p>
+        <p class="lead">I'm not "flying."</p>
+        <p class="lead">I'm <b>falling</b> &mdash; sideways, fast enough that I keep missing the ground, forever. That's the whole trick.</p>
+        <p class="lead">Meanwhile Earth's lumpy equator keeps tugging at me sideways, sunlight leans on me like a slow-motion bully, and thin wisps of leftover atmosphere quietly sand down my orbit.</p>
+        <p class="lead">My operators are never <i>quite</i> sure exactly where I am, either.</p>
+        <p class="lead">Comforting.</p>
         <p class="footnote">"Falling with style." &mdash; me, misquoting a movie about a toy astronaut.</p>
       </div>
       <div class="orbit-diagram tilt">
@@ -602,7 +642,10 @@ html,body{height:auto;overflow:auto;}
         <div class="chapnum">02</div>
         <div class="eyebrow">Chapter 2 &mdash; conjunction.py</div>
         <h2 class="title">The one who watches my back</h2>
-        <p class="lead">I don't have eyes. I can't see the other 10,000+ tracked objects sharing this orbit with me. What I do have is a very patient algorithm, quietly ruling out ~50 million boring pairings in microseconds, then running the real math &mdash; the actual probability-of-collision integral, the one real operators trust &mdash; on the handful that matter. Cross <b>1-in-10,000</b> odds and it doesn't panic. It just gets to work.</p>
+        <p class="lead">I don't have eyes. I can't see the other 10,000+ tracked objects sharing this orbit with me.</p>
+        <p class="lead">What I do have is a very patient algorithm, quietly ruling out ~50 million boring pairings in microseconds, then running the real math &mdash; the actual probability-of-collision integral, the one real operators trust &mdash; on the handful that matter.</p>
+        <p class="lead">Cross <b>1-in-10,000</b> odds and it doesn't panic.</p>
+        <p class="lead">It just gets to work.</p>
       </div>
     </div>
   </section>
@@ -614,7 +657,10 @@ html,body{height:auto;overflow:auto;}
         <div class="chapnum">03</div>
         <div class="eyebrow">Chapter 3 &mdash; avoidance.py</div>
         <h2 class="title">The world's smallest emergency brake</h2>
-        <p class="lead">I don't have brakes. I don't have a steering wheel. I have about <b>25 m/s</b> of fuel for my entire operational life &mdash; a shot glass, not a gas tank. So when a burn gets called, it's not dramatic. It's a whisper, days ahead of time, and I let orbital mechanics do the dramatic part for me. A tiny nudge now beats a desperate shove later. Every single time.</p>
+        <p class="lead">I don't have brakes. I don't have a steering wheel.</p>
+        <p class="lead">I have about <b>25 m/s</b> of fuel for my entire operational life &mdash; a shot glass, not a gas tank.</p>
+        <p class="lead">So when a burn gets called, it's not dramatic. It's a whisper, days ahead of time, and I let orbital mechanics do the dramatic part for me.</p>
+        <p class="lead">A tiny nudge now beats a desperate shove later. Every single time.</p>
       </div>
       <div class="burn-diagram tilt" style="width:min(30vw,320px);height:220px;">
         <svg viewBox="0 0 300 200">
@@ -636,7 +682,11 @@ html,body{height:auto;overflow:auto;}
         <div class="chapnum">04</div>
         <div class="eyebrow">Chapter 4 &mdash; damage_minimization.py</div>
         <h2 class="title">If I can't dodge, I at least get to choose</h2>
-        <p class="lead">Sometimes the warning comes too late. Sometimes the tank's already empty. That's when the question stops being "can we avoid this" and becomes "how do we make this suck less." Turn edge-on instead of flat-on. Aim for a glancing sideswipe instead of a bullseye. Bias the wreckage toward an altitude where the atmosphere cleans it up in months, not centuries. It's the closest thing I get to planning my own funeral.</p>
+        <p class="lead">Sometimes the warning comes too late. Sometimes the tank's already empty.</p>
+        <p class="lead">That's when the question stops being "can we avoid this" and becomes "how do we make this suck less."</p>
+        <p class="lead">Turn edge-on instead of flat-on. Aim for a glancing sideswipe instead of a bullseye.</p>
+        <p class="lead">Bias the wreckage toward an altitude where the atmosphere cleans it up in months, not centuries.</p>
+        <p class="lead">It's the closest thing I get to planning my own funeral.</p>
       </div>
     </div>
   </section>
@@ -648,7 +698,11 @@ html,body{height:auto;overflow:auto;}
         <div class="chapnum">05</div>
         <div class="eyebrow">Chapter 5 &mdash; risk_optimizer.py</div>
         <h2 class="title">Turns out I'm one of many problems</h2>
-        <p class="lead">Humbling discovery: I'm not the only satellite having a bad day. There are hundreds of us, all sharing the same finite fuel and attention, all tangled together &mdash; dodge one thing and you might steer straight into another. So the system stops thinking about just me and starts treating the whole constellation as one risk network, hunting for the single move that defuses an entire cluster at once. It borrows the algorithm that beat humans at Go. I try not to take it personally that I'm currently a chess piece.</p>
+        <p class="lead">Humbling discovery: I'm not the only satellite having a bad day.</p>
+        <p class="lead">There are hundreds of us, all sharing the same finite fuel and attention, all tangled together &mdash; dodge one thing and you might steer straight into another.</p>
+        <p class="lead">So the system stops thinking about just me and starts treating the whole constellation as one risk network, hunting for the single move that defuses an entire cluster at once.</p>
+        <p class="lead">It borrows the algorithm that beat humans at Go.</p>
+        <p class="lead">I try not to take it personally that I'm currently a chess piece.</p>
       </div>
       <div class="graph-wrap tilt" style="width:min(32vw,340px);height:260px;">
         <svg viewBox="0 0 300 240" id="graphSvg"></svg>
@@ -663,7 +717,8 @@ html,body{height:auto;overflow:auto;}
         <div class="chapnum">06</div>
         <div class="eyebrow">Chapter 6 &mdash; the dashboard</div>
         <h2 class="title">Someone is finally watching</h2>
-        <p class="lead">All of this &mdash; my falling, my near-misses, my fuel anxiety &mdash; gets rendered live: 3D orbit views, risk timelines, debris breakdowns, and an AI narrator that turns my raw panic numbers into something a human can read on their worst day, without a physics degree. It's nice to be seen.</p>
+        <p class="lead">All of this &mdash; my falling, my near-misses, my fuel anxiety &mdash; gets rendered live: 3D orbit views, risk timelines, debris breakdowns, and an AI narrator that turns my raw panic numbers into something a human can read on their worst day, without a physics degree.</p>
+        <p class="lead">It's nice to be seen.</p>
         <div class="cta-row"><a class="btn btn-primary" href="index.html">Open My Live Dashboard &#8594;</a></div>
       </div>
       <div class="mock tilt">
@@ -684,7 +739,10 @@ html,body{height:auto;overflow:auto;}
     <div class="slide-inner">
       <div class="eyebrow" style="justify-content:center;">Epilogue</div>
       <h2 class="title">Still here. You're welcome.</h2>
-      <p class="lead">Most tools react to one collision alert at a time &mdash; whack-a-mole with rocket fuel. This one runs my fuel and risk like an actual budget, before this whole neighborhood turns into a demolition derby that never, ever ends. I'd like to stay in one piece. Preferably in this exact shape. Preferably today.</p>
+      <p class="lead">Most tools react to one collision alert at a time &mdash; whack-a-mole with rocket fuel.</p>
+      <p class="lead">This one runs my fuel and risk like an actual budget, before this whole neighborhood turns into a demolition derby that never, ever ends.</p>
+      <p class="lead">I'd like to stay in one piece. Preferably in this exact shape.</p>
+      <p class="lead">Preferably today.</p>
       <div class="cta-row" style="justify-content:center;">
         <a class="btn btn-primary" href="index.html">Launch My Dashboard &#8594;</a>
         <a class="btn btn-ghost" href="#" onclick="goTo(0);return false;">Read My Diary Again</a>
@@ -692,6 +750,7 @@ html,body{height:auto;overflow:auto;}
       <p class="footnote" style="margin-top:22px;">
         Want to learn more about the science? <a href="science.html" style="color:var(--cyan);text-decoration:underline;">Click here.</a>
         Curious about the architecture? <a href="architecture.html" style="color:var(--cyan);text-decoration:underline;">Details here.</a>
+        Prefer the raw docs? <a href="/docs" style="color:var(--cyan);text-decoration:underline;">Read them here.</a>
       </p>
     </div>
   </section>
@@ -718,9 +777,15 @@ html,body{height:auto;overflow:auto;}
     });
   }
 
-  slides.forEach((_,i)=>{
+  slides.forEach((s,i)=>{
     const b = document.createElement('button');
-    b.setAttribute('aria-label','Go to slide '+(i+1));
+    // use each slide's own eyebrow/heading text as the tooltip, so the
+    // dots nav tells you where you're jumping to instead of just "slide N"
+    const eyebrowText = s.querySelector('.eyebrow')?.textContent.trim();
+    const titleText = s.querySelector('h1.big, h2.title')?.textContent.trim();
+    const label = eyebrowText || titleText || ('Slide '+(i+1));
+    b.title = label;
+    b.setAttribute('aria-label','Go to: '+label);
     b.addEventListener('click',()=>goTo(i));
     dotsWrap.appendChild(b);
   });

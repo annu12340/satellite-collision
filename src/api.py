@@ -1012,6 +1012,71 @@ def serve_docs():
     return send_from_directory(app.static_folder, 'docs.html')
 
 
+@app.route('/docs')
+def serve_docs_hub():
+    """
+    Serve the Docs Hub: a card-based index of every documentation source
+    in the repo (README, docs/*.md, and the interactive physics/architecture
+    pages), plus an in-browser Markdown viewer for the raw .md files.
+    """
+    return send_from_directory(app.static_folder, 'docs-hub.html')
+
+
+@app.route('/docs/view/<path:doc_path>')
+def serve_doc_view(doc_path):
+    """Serve the Markdown viewer shell; it fetches rendered content from
+    /docs/raw/<doc_path> client-side."""
+    return send_from_directory(app.static_folder, 'doc-view.html')
+
+
+# Markdown documentation files that are safe to render through /docs/raw.
+# Explicit allowlist (rather than an open filesystem walk) so this endpoint
+# can never be used to read arbitrary files outside the docs surface.
+_DOC_ALLOWLIST = {
+    'README.md',
+    'docs/content.md',
+    'docs/physics.md',
+    'docs/strategy.md',
+    'docs/setup-and-testing.md',
+}
+
+
+@app.route('/docs/raw/<path:doc_path>')
+def get_doc_raw(doc_path):
+    """
+    Render a Markdown documentation file to HTML for the /docs/view viewer.
+
+    Only files in _DOC_ALLOWLIST can be requested -- this is a fixed set of
+    project documentation files, not a general file server, so path
+    traversal (e.g. '../../etc/passwd') is rejected outright rather than
+    relying solely on path normalization.
+    """
+    if doc_path not in _DOC_ALLOWLIST:
+        return jsonify({'error': 'Document not found or not allowed'}), 404
+
+    full_path = os.path.normpath(os.path.join(ROOT_DIR, doc_path))
+    if not full_path.startswith(ROOT_DIR) or not os.path.isfile(full_path):
+        return jsonify({'error': 'Document not found'}), 404
+
+    try:
+        import markdown as _markdown
+        with open(full_path, 'r', encoding='utf-8') as f:
+            raw_text = f.read()
+        html = _markdown.markdown(
+            raw_text,
+            extensions=['extra', 'sane_lists', 'toc']
+        )
+        title = doc_path.rsplit('/', 1)[-1]
+        for line in raw_text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith('# '):
+                title = stripped[2:].strip()
+                break
+        return jsonify({'title': title, 'path': doc_path, 'html': html})
+    except Exception as e:
+        return jsonify({'error': f'Failed to render document: {e}'}), 500
+
+
 @app.route('/viz.html')
 def serve_viz():
     """Serve the 3D orbital visualization page."""

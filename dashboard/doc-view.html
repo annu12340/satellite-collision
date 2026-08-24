@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="pageTitle">Document — Orbital Sentinel</title>
+    <style>
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-card: #131c2e;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #8b5cf6;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e293b;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+        }
+        nav.topnav {
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(10,14,23,0.94);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid #1e2a42;
+            padding: 14px 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        nav.topnav .brand {
+            font-size: 0.9rem; font-weight: 700; letter-spacing: 3px;
+            background: linear-gradient(135deg,#00d4ff,#7b2ff7);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            text-decoration: none;
+        }
+        nav.topnav .links { display: flex; gap: 8px; }
+        nav.topnav .links a {
+            color: #8b9cc0; text-decoration: none; font-size: 0.8rem;
+            padding: 6px 14px; border-radius: 6px; border: 1px solid #1e2a42;
+            transition: all 0.2s;
+        }
+        nav.topnav .links a:hover { border-color: #00d4ff; color: #00d4ff; }
+        nav.topnav .links a.on { color: #00d4ff; border-color: #00d4ff; background: rgba(0,212,255,0.06); }
+
+        .doc-wrap {
+            max-width: 860px; margin: 0 auto; padding: 2.5rem 2rem 6rem;
+        }
+        .doc-meta {
+            display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-muted);
+        }
+        .doc-meta .path-pill {
+            border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px;
+            background: var(--bg-card);
+        }
+        #content { font-size: 1rem; }
+        #content h1, #content h2, #content h3, #content h4 {
+            color: var(--text-primary);
+            font-weight: 700;
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.3px;
+        }
+        #content h1 {
+            font-size: 2rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        #content h2 { font-size: 1.45rem; color: var(--accent-cyan); }
+        #content h3 { font-size: 1.15rem; }
+        #content p { color: var(--text-secondary); margin: 0.85rem 0; }
+        #content a { color: var(--accent-cyan); text-decoration: none; }
+        #content a:hover { text-decoration: underline; }
+        #content ul, #content ol { color: var(--text-secondary); padding-left: 1.4rem; margin: 0.75rem 0; }
+        #content li { margin: 0.3rem 0; }
+        #content code {
+            background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+            border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em;
+            font-family: 'JetBrains Mono', monospace; color: #7dd3fc;
+        }
+        #content pre {
+            background: #0d1422; border: 1px solid var(--border); border-radius: 10px;
+            padding: 1rem 1.25rem; overflow-x: auto; margin: 1rem 0;
+        }
+        #content pre code {
+            background: none; border: none; padding: 0; color: var(--text-secondary);
+            font-size: 0.85rem; line-height: 1.6;
+        }
+        #content blockquote {
+            border-left: 3px solid var(--accent-purple);
+            margin: 1rem 0; padding: 0.4rem 0 0.4rem 1.1rem;
+            color: var(--text-muted); font-style: italic;
+        }
+        #content table {
+            width: 100%; border-collapse: collapse; margin: 1.25rem 0; font-size: 0.88rem;
+        }
+        #content th, #content td {
+            border: 1px solid var(--border); padding: 0.55rem 0.85rem; text-align: left;
+        }
+        #content th { background: var(--bg-card); color: var(--text-primary); }
+        #content td { color: var(--text-secondary); }
+        #content tr:hover td { background: rgba(59,130,246,0.04); }
+        #content img { max-width: 100%; border-radius: 10px; border: 1px solid var(--border); margin: 1rem 0; }
+        #content hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+        .doc-loading, .doc-error {
+            color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+            padding: 3rem 0; text-align: center;
+        }
+        .doc-error { color: #f87171; }
+
+        .back-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+            color: var(--text-muted); text-decoration: none; margin-bottom: 1.5rem;
+        }
+        .back-link:hover { color: var(--accent-cyan); }
+    </style>
+</head>
+<body>
+    <nav class="topnav">
+        <a class="brand" href="/docs">ORBIT SENTINEL</a>
+        <div class="links">
+            <a href="/">Dashboard</a>
+            <a href="/architecture.html">Architecture</a>
+            <a href="/docs.html">Physics</a>
+            <a href="/docs" class="on">Docs Hub</a>
+        </div>
+    </nav>
+    <div class="doc-wrap">
+        <a class="back-link" href="/docs">&larr; Back to Docs Hub</a>
+        <div class="doc-meta">
+            <span class="path-pill" id="docPath">loading...</span>
+        </div>
+        <div id="content" class="doc-loading">Fetching document&hellip;</div>
+    </div>
+
+    <script>
+        (function () {
+            const parts = location.pathname.split('/docs/view/');
+            const docPath = decodeURIComponent(parts[1] || '');
+            document.getElementById('docPath').textContent = docPath || '(unknown)';
+
+            fetch('/docs/raw/' + docPath.split('/').map(encodeURIComponent).join('/'))
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
+                .then(data => {
+                    document.title = data.title + ' — Orbital Sentinel';
+                    document.getElementById('content').innerHTML = data.html;
+                    if (location.hash) {
+                        const target = document.getElementById(location.hash.slice(1));
+                        if (target) target.scrollIntoView();
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('content').className = 'doc-error';
+                    document.getElementById('content').textContent =
+                        'Could not load this document (' + err.message + '). It may not exist, or may not be a Markdown file under the project root.';
+                });
+        })();
+    </script>
+</body>
+</html>
