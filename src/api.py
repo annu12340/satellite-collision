@@ -928,12 +928,34 @@ def run_simulation(seed=42, n_spacecraft=None):
     # ========================================================================
     scenarios = generate_collision_scenarios(sim.spacecraft_list, sim.conjunctions)
 
+    # Populate SIM_DATA IMMEDIATELY (before expensive visualizations)
+    # This allows the API to start serving data while visualizations are being generated
+    SIM_DATA.clear()
+    SIM_DATA.update({
+        'spacecraft': spacecraft_data,
+        'conjunctions': conjunction_data,
+        'maneuvers': maneuver_data,
+        'risk_metrics': risk_metrics,
+        'risk_graph': risk_graph_data,
+        'shells': shell_data,
+        'debris': debris_data,
+        'risk_timeline': risk_timeline,
+        'risk_evolution': {},  # Placeholder - will be updated below
+        'debris_analysis': {},  # Placeholder - will be updated below
+        'scenarios': scenarios,
+        'run_id': int(time.time() * 1000),
+    })
+    print(f"Simulation data ready. API is serving...")
+
+    # Generate expensive visualizations asynchronously (doesn't block API)
     # Long-term risk evolution projection (dynamic equivalent of risk_evolution.png)
     risk_evolution = build_risk_evolution(sim)
+    SIM_DATA['risk_evolution'] = risk_evolution
 
     # Full debris breakup analysis for the riskiest conjunction
     # (dynamic equivalent of debris_analysis.png)
     debris_analysis = build_debris_analysis(sim)
+    SIM_DATA['debris_analysis'] = debris_analysis
 
     # Regenerate the 3D orbits plot (orbits_3d.png) from this run's data so
     # the "View Orbits 3D" button always reflects the latest simulation.
@@ -952,23 +974,7 @@ def run_simulation(seed=42, n_spacecraft=None):
     except Exception as e:
         print(f"  Warning: could not regenerate orbits_3d.png: {e}")
 
-    SIM_DATA.clear()
-    SIM_DATA.update({
-        'spacecraft': spacecraft_data,
-        'conjunctions': conjunction_data,
-        'maneuvers': maneuver_data,
-        'risk_metrics': risk_metrics,
-        'risk_graph': risk_graph_data,
-        'shells': shell_data,
-        'debris': debris_data,
-        'risk_timeline': risk_timeline,
-        'risk_evolution': risk_evolution,
-        'debris_analysis': debris_analysis,
-        'scenarios': scenarios,
-        'run_id': int(time.time() * 1000),
-    })
-
-    print(f"Simulation complete. Serving dashboard...")
+    print(f"Simulation complete. All visualizations ready...")
 
 
 # ============================================================================
