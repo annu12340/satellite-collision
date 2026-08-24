@@ -70,7 +70,6 @@ CORS(app)
 # Global simulation cache
 SIM_DATA = {}
 SIM_LOCK = threading.Lock()
-SIM_READY = threading.Event()  # Flag to indicate simulation is fully initialized
 
 # Holds the live CollisionPreventionSimulation object (spacecraft/conjunction
 # objects, not just their serialized JSON form) so cuOpt-backed endpoints
@@ -968,9 +967,6 @@ def run_simulation(seed=42, n_spacecraft=None):
         'scenarios': scenarios,
         'run_id': int(time.time() * 1000),
     })
-    
-    # Signal that simulation is ready for API calls
-    SIM_READY.set()
 
     print(f"Simulation complete. Serving dashboard...")
 
@@ -1157,16 +1153,12 @@ def get_debris_analysis():
 @app.route('/api/all')
 def get_all():
     """All simulation data in a single request (for initial load)."""
-    if not SIM_READY.is_set():
+    # Check if simulation has populated data (indicates completion)
+    if not SIM_DATA or 'spacecraft' not in SIM_DATA:
         return jsonify({
             'status': 'loading',
             'message': 'Simulation is still initializing. Please retry shortly.'
         }), 503
-    if not SIM_DATA:
-        return jsonify({
-            'status': 'error',
-            'message': 'Simulation data not available.'
-        }), 500
     return jsonify(SIM_DATA)
 
 
