@@ -1,7 +1,19 @@
 # AI Satellite Collision Prevention System
 
+## The Story Behind This
+
+I was excited when I saw this hackathon. I was looking for something out of the world — literally. Then I came across an image from Science Magazine showing the staggering visualization of debris objects in low-Earth orbit: thousands of fragments, each one a potential bullet traveling at hypervelocity, each one a collision risk.
+
+That's when it hit me. We've created this beautiful infrastructure in orbit — GPS, weather forecasting, communications, climate monitoring — all depending on satellites that are now sharing crowded orbital highways with thousands of pieces of debris from past collisions. 
+The problem isn't just "is there a collision?" It's "given uncertainty, limited fuel, multiple simultaneous threats, and future consequences, what's the best intervention?" That's a question no human can answer fast enough when you've got thousands of objects and limited warning time.
+
+So I built this: a system that predicts, assesses, optimizes, and explains collision prevention in real time. Physics determines what's happening. Optimization determines what to do. AI explains why. That's the three-layer approach this system is built on.
+
+---
+
 ## Index
 
+- [The Story Behind This](#the-story-behind-this)
 - [Quick Links](#quick-links)
 - [Why This Problem Matters](#why-this-problem-matters)
 - [What This System Does](#what-this-system-does)
@@ -22,17 +34,6 @@
 - [Innovation & Roadmap](#innovation--roadmap)
 
 ---
-
-**What happens when thousands of satellites share the same orbital highways, every trajectory is uncertain, and every maneuver consumes irreplaceable fuel?**
-
-You don't solve that problem with a single collision warning.
-
-You solve it with a system that can **predict, assess, optimize, explain, and continuously re-evaluate risk** across an entire constellation.
-
-This project is an end-to-end satellite collision prevention platform combining **orbital mechanics, probabilistic conjunction assessment, multi-strategy optimization, debris cascade modeling, GPU acceleration, and AI decision support** into one real-time system.
-
-> **Physics determines what is happening. Optimization determines what to do. AI explains why.**
-
 
 
 ## Quick Links
