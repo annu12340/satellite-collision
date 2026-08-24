@@ -567,7 +567,9 @@ def propagate_with_stm(state: StateVector, dt: float,
                        cd: float = 2.2, cr: float = 1.5,
                        area_mass_ratio: float = 0.01,
                        include_j2: bool = True,
-                       max_step: float = 60.0) -> Tuple[StateVector, np.ndarray]:
+                       max_step: float = 60.0,
+                       rtol: float = 1e-10,
+                       atol: float = 1e-12) -> Tuple[StateVector, np.ndarray]:
     """
     Propagate state AND State Transition Matrix.
 
@@ -584,6 +586,12 @@ def propagate_with_stm(state: StateVector, dt: float,
         Initial state
     dt : float
         Propagation time [seconds]
+    rtol : float
+        Relative tolerance for ODE solver. Default 1e-10 (high precision).
+        For maneuver planning, can be loosened to 1e-8 for speed.
+    atol : float
+        Absolute tolerance for ODE solver. Default 1e-12 (high precision).
+        For maneuver planning, can be loosened to 1e-10 for speed.
 
     Returns
     -------
@@ -612,8 +620,8 @@ def propagate_with_stm(state: StateVector, dt: float,
         y0,
         method='DOP853',
         max_step=max_step,
-        rtol=1e-10,
-        atol=1e-12,
+        rtol=rtol,
+        atol=atol,
         args=(cd, cr, area_mass_ratio, include_j2)
     )
 
