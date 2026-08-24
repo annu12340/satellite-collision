@@ -244,7 +244,8 @@ def maneuver_effectiveness_scalar(phi_rv: np.ndarray,
 def optimal_maneuver_time(state: StateVector, tca: float,
                           earliest: float = 0.0,
                           area_mass_ratio: float = 0.01,
-                          n_samples: int = 2) -> float:
+                          n_samples: int = 2,
+                          fast_mode: bool = False) -> float:
     """
     Find the optimal maneuver time that maximizes effectiveness.
 
@@ -263,9 +264,10 @@ def optimal_maneuver_time(state: StateVector, tca: float,
         A/m ratio
     n_samples : int
         Number of time samples to evaluate. Reduced to 2 for production 
-        deployment speed. With n_samples=2, we evaluate early and 75%
-        through the window, capturing the main effectiveness trend with
-        minimal computation (only 2 STM propagations per maneuver).
+        deployment speed.
+    fast_mode : bool
+        If True, skip sampling entirely and use 50% of the way to TCA
+        (faster for deployment environments with limited CPU)
 
     Returns
     -------
@@ -277,6 +279,10 @@ def optimal_maneuver_time(state: StateVector, tca: float,
 
     if latest <= earliest:
         return earliest
+
+    # Fast mode: skip expensive sampling
+    if fast_mode:
+        return earliest + (latest - earliest) * 0.5
 
     # Sample effectiveness at just 2 times: early and mid-window
     times = np.array([earliest, earliest + (latest - earliest) * 0.75])
@@ -309,7 +315,8 @@ def design_avoidance_maneuver(spacecraft: Spacecraft,
                                conjunction: Conjunction,
                                target_miss_km: float = 1.0,
                                max_delta_v_ms: Optional[float] = None,
-                               maneuver_time: Optional[float] = None
+                               maneuver_time: Optional[float] = None,
+                               fast_mode: bool = False
                                ) -> Optional[Maneuver]:
     """
     Design an optimal collision avoidance maneuver for a single conjunction.
@@ -334,6 +341,8 @@ def design_avoidance_maneuver(spacecraft: Spacecraft,
         Maximum allowed Δv [m/s]. Defaults to remaining budget.
     maneuver_time : float, optional
         Forced maneuver time. If None, optimized automatically.
+    fast_mode : bool
+        If True, skip expensive optimization (useful for deployment)
 
     Returns
     -------
@@ -353,20 +362,27 @@ def design_avoidance_maneuver(spacecraft: Spacecraft,
         maneuver_time = optimal_maneuver_time(
             spacecraft.state, tca,
             earliest=60.0,  # At least 1 minute from now
-            area_mass_ratio=am
+            area_mass_ratio=am,
+            fast_mode=fast_mode
         )
 
     # Step 2: Compute effectiveness matrix
     try:
         phi_rv = maneuver_effectiveness_matrix(
-            spacecraft.state, tca, maneuver_time, am
+            spacecraft.state, tca, maneuver_time, am,
+            rtol_override=1e-7 if fast_mode else None,
+            atol_override=1e-9 if fast_mode else None
         )
     except RuntimeError:
         return None
 
     # Step 3: Compute current miss vector at TCA
-    state_at_tca = propagate_state(spacecraft.state, tca, area_mass_ratio=am)
-    other_at_tca = propagate_state(other.state, tca, area_mass_ratio=other.area / other.mass)
+    state_at_tca = propagate_state(spacecraft.state, tca, area_mass_ratio=am,
+                                    rtol=1e-7 if fast_mode else 1e-10,
+                                    atol=1e-9 if fast_mode else 1e-12)
+    other_at_tca = propagate_state(other.state, tca, area_mass_ratio=other.area / other.mass,
+                                    rtol=1e-7 if fast_mode else 1e-10,
+                                    atol=1e-9 if fast_mode else 1e-12)
     miss_vector_3d = state_at_tca.r - other_at_tca.r
     current_miss = np.linalg.norm(miss_vector_3d)
 
@@ -398,7 +414,9 @@ def design_avoidance_maneuver(spacecraft: Spacecraft,
     delta_v_eci = dv_direction * dv_magnitude
 
     # Convert to RTN frame at maneuver time
-    state_at_man = propagate_state(spacecraft.state, maneuver_time, area_mass_ratio=am)
+    state_at_man = propagate_state(spacecraft.state, maneuver_time, area_mass_ratio=am,
+                                    rtol=1e-7 if fast_mode else 1e-10,
+                                    atol=1e-9 if fast_mode else 1e-12)
     rtn_matrix = eci_to_rtn(state_at_man.r, state_at_man.v)
     delta_v_rtn = rtn_matrix @ delta_v_eci
 
@@ -790,7 +808,7 @@ class ManeuverDecision:
 def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
                              conjunctions: List[Conjunction],
                              planning_horizon: float = 86400.0,
-                             timeout_seconds: float = 5.0
+                             timeout_seconds: float = 15.0
                              ) -> List[Maneuver]:
     """
     Plan a complete avoidance campaign for all active conjunctions.
@@ -811,15 +829,25 @@ def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
         Planning window [seconds]
     timeout_seconds : float
         Maximum time to spend on maneuver planning. If exceeded, returns
-        best-so-far and logs a warning. Default 5 seconds keeps the
-        simulation responsive on deployment platforms.
+        best-so-far and logs a warning. Default 15 seconds keeps the
+        simulation responsive while allowing thorough planning.
 
     Returns
     -------
     list of Maneuver
         Planned maneuvers in execution order
     """
+    import os
     import signal
+    
+    # On deployment (Render), skip expensive maneuver planning to avoid timeouts
+    # Set SKIP_MANEUVER_PLANNING=1 in environment to enable
+    if os.getenv('SKIP_MANEUVER_PLANNING', '').lower() in ('1', 'true', 'yes'):
+        logger.info("Maneuver planning skipped (SKIP_MANEUVER_PLANNING set)")
+        return []
+    
+    # Check if we should use fast mode (loose tolerances, no STM sampling)
+    fast_mode = os.getenv('FAST_MANEUVER_PLANNING', '').lower() in ('1', 'true', 'yes')
     
     # Build lookup
     sc_dict = {sc.id: sc for sc in spacecraft_list}
@@ -890,7 +918,8 @@ def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
                 try:
                     maneuver = design_avoidance_maneuver(
                         maneuverer, target, conj,
-                        target_miss_km=1.0
+                        target_miss_km=1.0,
+                        fast_mode=fast_mode
                     )
 
                     if maneuver is not None:

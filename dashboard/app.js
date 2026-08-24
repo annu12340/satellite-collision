@@ -82,7 +82,7 @@ async function init() {
         updateLoadStatus(
             isTimeout
                 ? 'Simulation processing... This may take up to 60 seconds. Please wait.'
-                : 'Unable to load simulation. Please check your connection and refresh.',
+                : 'Unable to load simulation. The server rate limit could be hit or there is some connectivity issue. Please check your connection and refresh.',
             20
         );
         setTimeout(init, 2000);
