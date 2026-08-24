@@ -81,8 +81,8 @@ async function init() {
         const isTimeout = err.name === 'AbortError';
         updateLoadStatus(
             isTimeout
-                ? 'Server busy (simulation running?). Retrying...'
-                : 'Error connecting to server. Retrying...',
+                ? 'Simulation processing... This may take up to 60 seconds. Please wait.'
+                : 'Unable to load simulation. Please check your connection and refresh.',
             20
         );
         setTimeout(init, 2000);

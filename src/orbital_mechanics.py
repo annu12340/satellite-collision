@@ -509,7 +509,9 @@ def propagate_state(state: StateVector, dt: float,
                     include_j2: bool = True,
                     include_drag: bool = True,
                     include_srp: bool = False,
-                    max_step: float = 60.0) -> StateVector:
+                    max_step: float = 60.0,
+                    rtol: float = 1e-10,
+                    atol: float = 1e-12) -> StateVector:
     """
     Propagate a state vector forward by dt seconds using numerical integration.
 
@@ -525,6 +527,12 @@ def propagate_state(state: StateVector, dt: float,
         Perturbation toggles
     max_step : float
         Maximum integration step [seconds]
+    rtol : float
+        Relative tolerance for ODE solver. Default 1e-10 (high precision).
+        For fast maneuver planning, can be loosened to 1e-8.
+    atol : float
+        Absolute tolerance for ODE solver. Default 1e-12 (high precision).
+        For fast maneuver planning, can be loosened to 1e-10.
 
     Returns
     -------
@@ -551,8 +559,8 @@ def propagate_state(state: StateVector, dt: float,
         y0,
         method='DOP853',
         max_step=max_step,
-        rtol=1e-10,
-        atol=1e-12,
+        rtol=rtol,
+        atol=atol,
         args=(cd, cr, area_mass_ratio, include_j2, include_drag, include_srp)
     )
 

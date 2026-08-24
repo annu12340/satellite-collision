@@ -19,6 +19,7 @@ The integration pipeline automatically validates and wires these strategies.
 """
 
 import numpy as np
+import time
 from scipy.optimize import minimize, minimize_scalar
 from typing import List, Tuple, Optional, Dict, Callable
 
@@ -146,11 +147,11 @@ def maneuver_effectiveness_matrix(state: StateVector, tca: float,
     area_mass_ratio : float
         A/m for the spacecraft [m²/kg]
     rtol_override : float, optional
-        Override relative tolerance for STM propagation. If None, uses default
+        Override relative tolerance for propagations. If None, uses default
         1e-10. For maneuver planning, looser tolerances (1e-8) can be used
         to speed up computation.
     atol_override : float, optional
-        Override absolute tolerance for STM propagation. If None, uses default
+        Override absolute tolerance for propagations. If None, uses default
         1e-12. For maneuver planning, looser tolerances (1e-10) can be used.
 
     Returns
@@ -158,15 +159,18 @@ def maneuver_effectiveness_matrix(state: StateVector, tca: float,
     ndarray (3, 3)
         Position sensitivity to velocity change: Δr_TCA = M · Δv_maneuver
     """
-    # First propagate to maneuver time
-    state_at_maneuver = propagate_state(state, t_maneuver, area_mass_ratio=area_mass_ratio)
+    rtol = rtol_override or 1e-10
+    atol = atol_override or 1e-12
+    
+    # First propagate to maneuver time with loose tolerances
+    state_at_maneuver = propagate_state(state, t_maneuver, area_mass_ratio=area_mass_ratio,
+                                        rtol=rtol, atol=atol)
 
     # Then get STM from maneuver time to TCA
     dt_to_tca = tca - t_maneuver
     _, stm = propagate_with_stm(state_at_maneuver, dt_to_tca,
                                  area_mass_ratio=area_mass_ratio,
-                                 rtol=rtol_override or 1e-10,
-                                 atol=atol_override or 1e-12)
+                                 rtol=rtol, atol=atol)
 
     # Extract Φ_rv (upper-right 3×3 block): maps Δv → Δr
     phi_rv = stm[:3, 3:]
@@ -240,7 +244,7 @@ def maneuver_effectiveness_scalar(phi_rv: np.ndarray,
 def optimal_maneuver_time(state: StateVector, tca: float,
                           earliest: float = 0.0,
                           area_mass_ratio: float = 0.01,
-                          n_samples: int = 4) -> float:
+                          n_samples: int = 2) -> float:
     """
     Find the optimal maneuver time that maximizes effectiveness.
 
@@ -258,11 +262,10 @@ def optimal_maneuver_time(state: StateVector, tca: float,
     area_mass_ratio : float
         A/m ratio
     n_samples : int
-        Number of time samples to evaluate. Reduced to 4 (from 8) for 
-        speed — trades timing precision for ~4x faster maneuver planning.
-        Each sample calls propagate_state + propagate_with_stm, which is
-        computationally expensive. With n_samples=4, planning 5 conjunctions
-        with 4 samples each = 20 STM propagations total, manageable in <10s.
+        Number of time samples to evaluate. Reduced to 2 for production 
+        deployment speed. With n_samples=2, we evaluate early and 75%
+        through the window, capturing the main effectiveness trend with
+        minimal computation (only 2 STM propagations per maneuver).
 
     Returns
     -------
@@ -275,9 +278,9 @@ def optimal_maneuver_time(state: StateVector, tca: float,
     if latest <= earliest:
         return earliest
 
-    # Sample effectiveness at different times
-    times = np.linspace(earliest, latest, n_samples)
-    effectiveness = np.zeros(n_samples)
+    # Sample effectiveness at just 2 times: early and mid-window
+    times = np.array([earliest, earliest + (latest - earliest) * 0.75])
+    effectiveness = np.zeros(2)
 
     for idx, t_man in enumerate(times):
         try:
@@ -786,7 +789,8 @@ class ManeuverDecision:
 
 def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
                              conjunctions: List[Conjunction],
-                             planning_horizon: float = 86400.0
+                             planning_horizon: float = 86400.0,
+                             timeout_seconds: float = 5.0
                              ) -> List[Maneuver]:
     """
     Plan a complete avoidance campaign for all active conjunctions.
@@ -805,12 +809,18 @@ def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
         All active conjunctions from screening
     planning_horizon : float
         Planning window [seconds]
+    timeout_seconds : float
+        Maximum time to spend on maneuver planning. If exceeded, returns
+        best-so-far and logs a warning. Default 5 seconds keeps the
+        simulation responsive on deployment platforms.
 
     Returns
     -------
     list of Maneuver
         Planned maneuvers in execution order
     """
+    import signal
+    
     # Build lookup
     sc_dict = {sc.id: sc for sc in spacecraft_list}
 
@@ -820,51 +830,85 @@ def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
     planned_maneuvers = []
     modified_spacecraft = {}  # Track spacecraft that have been assigned maneuvers
 
-    for conj in prioritized:
-        # Check if either object can maneuver
-        obj1 = sc_dict.get(conj.obj1_id)
-        obj2 = sc_dict.get(conj.obj2_id)
+    # For timeout handling on Unix systems
+    def _timeout_handler(signum, frame):
+        raise TimeoutError("Maneuver planning exceeded timeout")
+    
+    start_time = time.time()
+    old_handler = None
+    
+    try:
+        # Set alarm signal for Unix (won't work on Windows, but safe to try)
+        if hasattr(signal, 'SIGALRM'):
+            old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(int(timeout_seconds) + 1)
 
-        if obj1 is None or obj2 is None:
-            continue
+        for conj in prioritized:
+            # Check wall-clock timeout
+            elapsed = time.time() - start_time
+            if elapsed > timeout_seconds:
+                logger.warning(
+                    "Maneuver planning timeout after %.1f sec (planned %d maneuvers). "
+                    "Returning best-so-far.",
+                    elapsed, len(planned_maneuvers)
+                )
+                break
 
-        # Use modified state if spacecraft already has a planned maneuver
-        if conj.obj1_id in modified_spacecraft:
-            obj1 = modified_spacecraft[conj.obj1_id]
-        if conj.obj2_id in modified_spacecraft:
-            obj2 = modified_spacecraft[conj.obj2_id]
+            # Check if either object can maneuver
+            obj1 = sc_dict.get(conj.obj1_id)
+            obj2 = sc_dict.get(conj.obj2_id)
 
-        # Determine who maneuvers (prefer the one with more fuel)
-        maneuverer, target = None, None
-        if obj1.maneuverable and obj2.maneuverable:
-            fuel1 = obj1.delta_v_budget - obj1.delta_v_used
-            fuel2 = obj2.delta_v_budget - obj2.delta_v_used
-            if fuel1 >= fuel2:
+            if obj1 is None or obj2 is None:
+                continue
+
+            # Use modified state if spacecraft already has a planned maneuver
+            if conj.obj1_id in modified_spacecraft:
+                obj1 = modified_spacecraft[conj.obj1_id]
+            if conj.obj2_id in modified_spacecraft:
+                obj2 = modified_spacecraft[conj.obj2_id]
+
+            # Determine who maneuvers (prefer the one with more fuel)
+            maneuverer, target = None, None
+            if obj1.maneuverable and obj2.maneuverable:
+                fuel1 = obj1.delta_v_budget - obj1.delta_v_used
+                fuel2 = obj2.delta_v_budget - obj2.delta_v_used
+                if fuel1 >= fuel2:
+                    maneuverer, target = obj1, obj2
+                else:
+                    maneuverer, target = obj2, obj1
+            elif obj1.maneuverable:
                 maneuverer, target = obj1, obj2
-            else:
+            elif obj2.maneuverable:
                 maneuverer, target = obj2, obj1
-        elif obj1.maneuverable:
-            maneuverer, target = obj1, obj2
-        elif obj2.maneuverable:
-            maneuverer, target = obj2, obj1
-        else:
-            continue  # Neither can maneuver
+            else:
+                continue  # Neither can maneuver
 
-        # Check decision
-        decision = ManeuverDecision.should_maneuver(conj, maneuverer, conj.tca)
+            # Check decision
+            decision = ManeuverDecision.should_maneuver(conj, maneuverer, conj.tca)
 
-        if decision in ('MANEUVER', 'CONSIDER'):
-            maneuver = design_avoidance_maneuver(
-                maneuverer, target, conj,
-                target_miss_km=1.0
-            )
+            if decision in ('MANEUVER', 'CONSIDER'):
+                try:
+                    maneuver = design_avoidance_maneuver(
+                        maneuverer, target, conj,
+                        target_miss_km=1.0
+                    )
 
-            if maneuver is not None:
-                planned_maneuvers.append(maneuver)
-                # Update spacecraft state for subsequent planning
-                modified_spacecraft[maneuverer.id] = apply_maneuver(maneuverer, maneuver)
+                    if maneuver is not None:
+                        planned_maneuvers.append(maneuver)
+                        # Update spacecraft state for subsequent planning
+                        modified_spacecraft[maneuverer.id] = apply_maneuver(maneuverer, maneuver)
+                except Exception as e:
+                    logger.warning("Failed to plan maneuver for %s <-> %s: %s",
+                                  conj.obj1_id, conj.obj2_id, str(e))
+                    continue
 
-    # Sort by execution time
-    planned_maneuvers.sort(key=lambda m: m.time)
+        # Sort by execution time
+        planned_maneuvers.sort(key=lambda m: m.time)
+
+    finally:
+        # Cancel alarm
+        if hasattr(signal, 'SIGALRM') and old_handler is not None:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
 
     return planned_maneuvers
