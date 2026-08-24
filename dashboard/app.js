@@ -63,7 +63,15 @@ const bplaneState = {
 // INITIALIZATION
 // ============================================================================
 
+// Guard flag: prevent infinite init() retries after successful data load
+let initialized = false;
+
 async function init() {
+    // Once initialization succeeds, don't retry anymore
+    if (initialized) {
+        return;
+    }
+
     updateLoadStatus('Fetching simulation data...', 20);
 
     try {
@@ -162,6 +170,9 @@ async function init() {
 
     updateLoadStatus('Ready', 100);
     setTimeout(showDashboard, 600);
+
+    // Mark initialization as complete - prevent future retries
+    initialized = true;
 
     animate();
 }
