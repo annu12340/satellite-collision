@@ -848,6 +848,11 @@ def plan_avoidance_campaign(spacecraft_list: List[Spacecraft],
     # Check if we should use fast mode (loose tolerances, no STM sampling)
     fast_mode = os.getenv('FAST_MANEUVER_PLANNING', '').lower() in ('1', 'true', 'yes')
     
+    # Tighten timeout in fast mode — each conjunction should take < 1s,
+    # so cap the whole campaign at 8s (well within Render's startup window)
+    if fast_mode and timeout_seconds == 15.0:
+        timeout_seconds = 8.0
+    
     # Build lookup
     sc_dict = {sc.id: sc for sc in spacecraft_list}
 

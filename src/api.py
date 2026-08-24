@@ -762,7 +762,13 @@ def run_simulation(seed=42, n_spacecraft=None):
 
     print(f"Running satellite collision simulation (seed={seed})...")
     sim = CollisionPreventionSimulation(n_spacecraft=n_spacecraft, seed=seed)
-    sim.run_full_simulation()
+
+    # Phase 1: Conjunction screening — fast (1-2s). Run this first so we can
+    # populate SIM_DATA and let /api/all respond while heavier phases continue.
+    sim.run_screening()
+    if not sim.conjunctions:
+        sim._create_demo_conjunctions()
+
     _CURRENT_SIM['sim'] = sim
 
     # Extract spacecraft data with orbital info
@@ -946,6 +952,78 @@ def run_simulation(seed=42, n_spacecraft=None):
         'run_id': int(time.time() * 1000),
     })
     print(f"Simulation data ready. API is serving...")
+
+    # =========================================================================
+    # PHASES 2-4: Run after SIM_DATA is populated so /api/all is already live.
+    # Use fast_mode for avoidance planning (loose tolerances, no STM sampling)
+    # so Phase 2 finishes in ~1-2s instead of 20+s.
+    # =========================================================================
+    import os as _os
+    _os.environ.setdefault('FAST_MANEUVER_PLANNING', '1')
+    sim.plan_avoidance()
+    sim.assess_unavoidable()
+    sim.run_optimizer()
+    sim._print_final_summary()
+
+    # Re-extract maneuver data now that Phase 2 has run
+    sc_dict_updated = {sc.id: sc for sc in sim.spacecraft_list}
+    maneuver_data_updated = []
+    for man in sim.planned_maneuvers:
+        sc = sc_dict_updated.get(man.spacecraft_id)
+        if not sc:
+            continue
+        maneuver_data_updated.append({
+            'spacecraft_id': man.spacecraft_id,
+            'time_hours': float(man.time / 3600.0),
+            'delta_v_rtn_ms': (man.delta_v * 1000).tolist(),
+            'fuel_cost_ms': float(man.fuel_cost),
+            'target_conjunction': man.target_conjunction_id,
+            'spacecraft_pos': sc.state.r.tolist()
+        })
+
+    # Update risk graph data with Phase 4 results
+    risk_graph_data_updated = {'nodes': [], 'edges': []}
+    if sim.risk_graph:
+        for node in sim.risk_graph.graph.nodes(data=True):
+            risk_graph_data_updated['nodes'].append({
+                'id': node[0],
+                'altitude_km': node[1].get('altitude_km', 0),
+                'maneuverable': node[1].get('maneuverable', False),
+                'fuel_remaining': node[1].get('fuel_remaining', 0),
+            })
+        for u, v, data in sim.risk_graph.graph.edges(data=True):
+            risk_graph_data_updated['edges'].append({
+                'source': u,
+                'target': v,
+                'risk_score': float(data.get('risk_score', 0)),
+                'pc': float(data.get('pc', 0)),
+            })
+
+    shell_data_updated = []
+    if sim.environment:
+        for shell in sim.environment.shells:
+            shell_data_updated.append({
+                'alt_min_km': float(shell.alt_min_km),
+                'alt_max_km': float(shell.alt_max_km),
+                'object_count': shell.object_count,
+                'collision_rate': float(shell.collision_rate),
+                'debris_generation_rate': float(shell.debris_generation_rate),
+                'debris_removal_rate': float(shell.debris_removal_rate),
+                'is_unstable': shell.is_unstable
+            })
+
+    # Patch SIM_DATA with the now-available maneuver + optimization data
+    SIM_DATA.update({
+        'maneuvers': maneuver_data_updated,
+        'risk_graph': risk_graph_data_updated,
+        'shells': shell_data_updated,
+        'risk_metrics': {
+            **SIM_DATA['risk_metrics'],
+            'maneuvers_planned': len(sim.planned_maneuvers),
+            'total_fuel_cost_ms': float(sum(m.fuel_cost for m in sim.planned_maneuvers)) if sim.planned_maneuvers else 0,
+        },
+    })
+    print("Phase 2-4 complete. Maneuver and optimization data updated in API.")
 
     # Generate expensive visualizations asynchronously (doesn't block API)
     # Long-term risk evolution projection (dynamic equivalent of risk_evolution.png)
