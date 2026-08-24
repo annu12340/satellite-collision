@@ -66,6 +66,18 @@ const bplaneState = {
 // Guard flag: prevent infinite init() retries after successful data load
 let initialized = false;
 
+// Retry counter for exponential backoff — reset on success
+let _initRetryCount = 0;
+
+/**
+ * Compute next retry delay using exponential backoff.
+ * Sequence (seconds): 3, 5, 8, 13, 20, 30, 30, 30, ...
+ */
+function _nextRetryDelay() {
+    const delays = [3000, 5000, 8000, 13000, 20000, 30000];
+    return delays[Math.min(_initRetryCount, delays.length - 1)];
+}
+
 async function init() {
     // Once initialization succeeds, don't retry anymore
     if (initialized) {
@@ -76,13 +88,13 @@ async function init() {
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         const response = await fetch('/api/all', { signal: controller.signal });
         clearTimeout(timeoutId);
         
         if (!response.ok) {
             if (response.status === 503) {
-                // Simulation still loading
+                // Simulation still loading — expected on first cold start
                 throw new Error('LOADING');
             } else if (response.status === 500) {
                 // Simulation error
@@ -96,18 +108,30 @@ async function init() {
         if (!simData || !simData.spacecraft) {
             throw new Error('EMPTY');
         }
+
+        // Success — reset retry counter
+        _initRetryCount = 0;
         
         updateLoadStatus('Building 3D scene...', 50);
     } catch (err) {
         const errMsg = err.message || err.toString();
         console.error('Failed to fetch simulation data:', errMsg);
+
+        const delay = _nextRetryDelay();
+        _initRetryCount++;
+        const delaySec = Math.round(delay / 1000);
         
         if (errMsg === 'LOADING') {
+            // Give the user an accurate picture: first ~30s is fast on warm
+            // servers; cold Render free-tier can take 1-3 minutes.
+            const attempt = _initRetryCount;
+            const elapsed = [0,3,8,16,29,49,79][Math.min(attempt, 6)];
             updateLoadStatus(
-                'Simulation is initializing... This takes about 30-60 seconds on first load. Please wait.',
+                `Simulation is initializing on the server (typically 1–2 min on first load).\n` +
+                `Checking again in ${delaySec}s… (~${elapsed}s elapsed)`,
                 20
             );
-            setTimeout(init, 3000);
+            setTimeout(init, delay);
             return;
         } else if (errMsg.startsWith('SERVER_ERROR')) {
             updateLoadStatus(
@@ -117,17 +141,17 @@ async function init() {
             return;
         } else if (errMsg === 'EMPTY') {
             updateLoadStatus(
-                'Simulation data is empty. This may indicate the simulation crashed or is still initializing. Retrying...',
+                `Simulation data not yet available — retrying in ${delaySec}s...`,
                 20
             );
-            setTimeout(init, 3000);
+            setTimeout(init, delay);
             return;
         } else if (err.name === 'AbortError') {
             updateLoadStatus(
-                'Request timed out. The server is taking longer than expected. Retrying...',
+                `Server is still starting up (request timed out). Retrying in ${delaySec}s...`,
                 20
             );
-            setTimeout(init, 3000);
+            setTimeout(init, delay);
             return;
         }
         
@@ -135,7 +159,7 @@ async function init() {
             'Connection issue: ' + errMsg + '\n\nPlease check your connection and refresh the page.',
             20
         );
-        setTimeout(init, 5000);
+        setTimeout(init, delay);
         return;
     }
 
